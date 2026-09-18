@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
+import { useToast } from '../../context/ToastContext';
 import {
   ShieldCheck, TrendingUp, Package, Truck, Star, ArrowRight,
   Eye, RefreshCw, AlertCircle, CheckCircle2, Clock, MapPin,
@@ -9,6 +10,7 @@ import {
   DollarSign, ArrowDownRight, FileText
 } from 'lucide-react';
 import axios from 'axios';
+import { formatDateTime, formatDateOnly } from '../../utils/dateUtils';
 
 interface PaymentInfo {
   id?: number | null;
@@ -16,6 +18,9 @@ interface PaymentInfo {
   amount_due: number;
   status: string;
   payment_method: string;
+  upi_id?: string;
+  labour_charges?: number;
+  delay_amount?: number;
   payment_reference?: string | null;
   payment_date?: string | null;
 }
@@ -43,10 +48,33 @@ interface TransactionItem {
   storage_cost: number;
   other_costs: number;
   net_realisation: number;
+  agreed_amount?: number;
+  labour_charges?: number;
+  labour_notes?: string;
+  labour_status?: string;
+  labour_proposed_by?: string;
+  delay_amount?: number;
+  delay_days?: number;
+  total_payable_amount?: number;
+  payment_method?: string;
+  upi_id?: string;
   net_price_per_kg: number;
   procurement_status: string;
   payment_status: string;
   final_status: string;
+  transaction_status?: string;
+  quality_status?: string;
+  quantity_status?: string;
+  quality_grade?: string;
+  payment_terms?: string;
+  payment_due_date?: string;
+  cold_storage_required?: boolean;
+  storage_duration?: string;
+  payment_amount?: number;
+  released_by?: number | null;
+  released_at?: string | null;
+  verified_by?: number | null;
+  verified_at?: string | null;
   created_at?: string | null;
   completed_at?: string | null;
   farmer_name: string;
@@ -66,6 +94,7 @@ interface TransactionItem {
 export const FarmerTransactionsPage: React.FC = () => {
   const { user } = useAuth();
   const { t } = useLanguage();
+  const { showToast } = useToast();
   const navigate = useNavigate();
 
   const [transactions, setTransactions] = useState<TransactionItem[]>([]);
@@ -76,6 +105,7 @@ export const FarmerTransactionsPage: React.FC = () => {
   const [comments, setComments] = useState<string>('Excellent procurement experience, timely handover and transparent pricing.');
   const [submittingRating, setSubmittingRating] = useState<boolean>(false);
   const [payingTxId, setPayingTxId] = useState<number | null>(null);
+  const [verifyingTxId, setVerifyingTxId] = useState<number | null>(null);
 
   const isFarmer = user?.role === 'farmer';
   const isBuyer = user?.role === 'buyer';
@@ -122,10 +152,11 @@ export const FarmerTransactionsPage: React.FC = () => {
         rating: rating,
         comments: comments
       });
+      showToast("Feedback submitted successfully!", "success");
       setRatingModalTx(null);
       fetchTransactions();
     } catch (err: any) {
-      alert("Feedback Notice: " + (err.response?.data?.detail || "Could not submit feedback. Please try again."));
+      showToast("Feedback Notice: " + (err.response?.data?.detail || "Could not submit feedback. Please try again."), "error");
     } finally {
       setSubmittingRating(false);
     }
@@ -134,23 +165,49 @@ export const FarmerTransactionsPage: React.FC = () => {
   const handleProcessPayment = async (txId: number) => {
     setPayingTxId(txId);
     try {
-      await axios.post(`/api/workflow/transactions/${txId}/pay`, {});
+      await axios.post(`/api/workflow/transactions/${txId}/release-payment`, {});
+      showToast("Payment Released Successfully", "success");
       fetchTransactions();
       if (selectedTx && selectedTx.id === txId) {
-        setSelectedTx(prev => prev ? { ...prev, payment_status: 'COMPLETED', final_status: 'COMPLETED' } : null);
+        setSelectedTx(prev => prev ? { ...prev, payment_status: 'RELEASED', final_status: 'PAYMENT_RELEASED' } : null);
       }
     } catch (err: any) {
-      alert("Payment Error: " + (err.response?.data?.detail || "Could not process settlement."));
+      showToast("Payment Error: " + (err.response?.data?.detail || "Could not process settlement."), "error");
     } finally {
       setPayingTxId(null);
     }
   };
 
+  const handleVerifyPayment = async (txId: number) => {
+    setVerifyingTxId(txId);
+    try {
+      await axios.post(`/api/workflow/transactions/${txId}/verify-payment`, {});
+      showToast("Transaction Completed Successfully", "success");
+      fetchTransactions();
+      if (selectedTx && selectedTx.id === txId) {
+        setSelectedTx(prev => prev ? {
+          ...prev,
+          payment_status: 'VERIFIED',
+          final_status: 'COMPLETED',
+          transaction_status: 'COMPLETED'
+        } : null);
+      }
+    } catch (err: any) {
+      showToast("Verification Error: " + (err.response?.data?.detail || "Could not verify payment."), "error");
+    } finally {
+      setVerifyingTxId(null);
+    }
+  };
+
   // Financial aggregates
   const totalGross = transactions.reduce((acc, t) => acc + (t.gross_value || 0), 0);
-  const totalTransport = transactions.reduce((acc, t) => acc + (t.transport_cost || 0), 0);
+  const totalStorage = transactions.reduce((acc, t) => acc + (t.storage_cost || 0), 0);
   const totalNet = transactions.reduce((acc, t) => acc + (t.net_realisation || 0), 0);
-  const completedSettlements = transactions.filter(t => t.payment_status === 'COMPLETED' || t.payment_status === 'Completed').length;
+  const completedSettlements = transactions.filter(t => 
+    t.payment_status?.toUpperCase() === 'COMPLETED' || 
+    t.payment_status?.toUpperCase() === 'VERIFIED' || 
+    t.final_status?.toUpperCase() === 'COMPLETED'
+  ).length;
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300">
@@ -194,9 +251,9 @@ export const FarmerTransactionsPage: React.FC = () => {
           </div>
 
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-1">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">{t('logisticsDeductions')}</span>
-            <p className="text-xl font-black text-rose-600 font-mono">- ₹{totalTransport.toLocaleString()}</p>
-            <span className="text-[10px] text-slate-500 font-medium">{t('directFarmPickup')}</span>
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">Cold Storage Deductions</span>
+            <p className="text-xl font-black text-slate-800 font-mono">₹{totalStorage.toLocaleString()}</p>
+            <span className="text-[10px] text-slate-500 font-medium">{totalStorage > 0 ? 'Preservation Applied' : 'No Storage Required (₹0)'}</span>
           </div>
 
           <div className="bg-white p-4 rounded-2xl border border-emerald-200 bg-emerald-50/40 shadow-xs space-y-1">
@@ -207,8 +264,8 @@ export const FarmerTransactionsPage: React.FC = () => {
 
           <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-xs space-y-1">
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">{t('paymentSettlements')}</span>
-            <p className="text-xl font-black text-blue-700 font-mono">{completedSettlements} / {transactions.length}</p>
-            <span className="text-[10px] text-blue-600 font-medium">{t('completedBankTransfers')}</span>
+            <p className="text-xl font-black text-blue-700 font-mono">{completedSettlements}</p>
+            <span className="text-[10px] text-emerald-600 font-bold">Completed UPI Settlements</span>
           </div>
         </div>
       )}
@@ -251,16 +308,22 @@ export const FarmerTransactionsPage: React.FC = () => {
                   <th className="p-4">{t('txnCode')}</th>
                   <th className="p-4">{t('cropAndQuantity')}</th>
                   <th className="p-4">{isBuyer ? t('farmerRole') : isAdmin ? t('counterparties') : t('buyerProcurer')}</th>
-                  <th className="p-4">{t('grossValue')}</th>
-                  <th className="p-4">{t('transportCost')}</th>
-                  <th className="p-4">{t('netRealisation')}</th>
+                  <th className="p-4">Agreed Amount</th>
+                  <th className="p-4">Labour Charges</th>
+                  <th className="p-4">Delay Amount</th>
+                  <th className="p-4">Total Settled (UPI)</th>
                   <th className="p-4">{t('paymentStatus')}</th>
                   <th className="p-4 text-center">{t('feedbackActions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-xs font-medium text-slate-700">
                 {transactions.map((tItem) => {
-                  const isCompletedPayment = tItem.payment_status === 'COMPLETED' || tItem.payment_status === 'Completed';
+                  const isCompleted = tItem.payment_status === 'COMPLETED' || tItem.payment_status === 'Completed' || tItem.payment_status === 'VERIFIED' || tItem.final_status === 'COMPLETED';
+                  const isReleased = tItem.payment_status === 'RELEASED' || tItem.payment_status === 'PAYMENT_RELEASED';
+                  const agreedProduceAmt = tItem.agreed_amount || tItem.net_realisation || 0;
+                  const labourAmt = tItem.labour_charges || 0;
+                  const delayAmt = tItem.delay_amount || 0;
+                  const totalSettlement = tItem.total_payable_amount || (agreedProduceAmt + labourAmt + delayAmt);
 
                   return (
                     <tr key={tItem.id} className="hover:bg-slate-50/70 transition-colors">
@@ -272,7 +335,7 @@ export const FarmerTransactionsPage: React.FC = () => {
                         >
                           <span>{tItem.transaction_code}</span>
                         </button>
-                        <span className="text-[10px] text-slate-400 block mt-0.5">{tItem.created_at || '12 Sep 2026'}</span>
+                        <span className="text-[10px] text-slate-400 block mt-0.5">{formatDateTime(tItem.created_at)}</span>
                       </td>
 
                       {/* Crop & Qty */}
@@ -296,52 +359,102 @@ export const FarmerTransactionsPage: React.FC = () => {
                         ) : (
                           <div>
                             <span className="font-bold text-slate-800 block">{tItem.buyer_company}</span>
-                            <span className="text-[10px] text-slate-400">{tItem.buyer_city || 'Telangana'}</span>
+                            <span className="text-[10px] text-slate-400">{tItem.buyer_city || tItem.buyer_district || 'Direct Buyer'}</span>
                           </div>
                         )}
                       </td>
 
-                      {/* Gross Value */}
+                      {/* Agreed Amount */}
                       <td className="p-4 font-mono font-bold text-slate-900">
-                        ₹{tItem.gross_value?.toLocaleString()}
+                        ₹{agreedProduceAmt.toLocaleString()}
                       </td>
 
-                      {/* Transport Cost */}
-                      <td className="p-4 font-mono font-bold text-rose-600">
-                        - ₹{tItem.transport_cost?.toLocaleString()}
+                      {/* Labour Charges */}
+                      <td className="p-4 font-mono">
+                        <span className={labourAmt > 0 ? "font-bold text-blue-700" : "text-slate-500"}>
+                          ₹{labourAmt.toLocaleString()}
+                        </span>
+                        <span className="text-[10px] text-slate-400 block font-normal capitalize">
+                          {tItem.labour_status || 'agreed'}
+                        </span>
                       </td>
 
-                      {/* Net Realisation */}
-                      <td className="p-4 font-mono font-black text-emerald-800 text-sm">
-                        ₹{tItem.net_realisation?.toLocaleString()}
+                      {/* Delay Amount */}
+                      <td className="p-4 font-mono">
+                        <span className={delayAmt > 0 ? "font-bold text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200" : "text-slate-500"}>
+                          ₹{delayAmt.toLocaleString()}
+                        </span>
+                        <span className="text-[10px] text-slate-400 block font-normal">
+                          {delayAmt > 0 ? `${tItem.delay_days || 1}d delay` : 'On-time'}
+                        </span>
+                      </td>
+
+                      {/* Total Settlement (UPI) */}
+                      <td className="p-4 font-mono">
+                        <span className="font-black text-emerald-800 text-sm block">
+                          ₹{totalSettlement.toLocaleString()}
+                        </span>
+                        <span className="text-[10px] font-bold text-emerald-600 uppercase flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>
+                          UPI Only
+                        </span>
                       </td>
 
                       {/* Payment Status */}
                       <td className="p-4">
-                        <span
-                          className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider ${
-                            isCompletedPayment
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-amber-100 text-amber-800'
-                          }`}
-                        >
-                          {isCompletedPayment ? <CheckCircle2 className="w-3 h-3" /> : <Clock className="w-3 h-3" />}
-                          {isCompletedPayment ? t('statusCompleted') : tItem.payment_status}
-                        </span>
+                        {isCompleted ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300">
+                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            COMPLETED
+                          </span>
+                        ) : isReleased ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-blue-100 text-blue-900 border border-blue-300">
+                            <Clock className="w-3 h-3 text-blue-700" />
+                            {isFarmer ? "RELEASED (UPI)" : isBuyer ? "RELEASED (UPI)" : "RELEASED"}
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300">
+                            <Clock className="w-3 h-3" />
+                            {tItem.payment_status || "PENDING"}
+                          </span>
+                        )}
                       </td>
 
                       {/* Actions */}
                       <td className="p-4 text-center">
                         <div className="flex items-center justify-center gap-2">
-                          {/* Buyer Payment Button */}
-                          {isBuyer && !isCompletedPayment && (
+                          {/* Farmer: Verify Payment Button */}
+                          {isFarmer && isReleased && (
+                            <button
+                              onClick={() => handleVerifyPayment(tItem.id)}
+                              disabled={verifyingTxId === tItem.id}
+                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-black text-[11px] rounded-xl shadow-xs transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>{verifyingTxId === tItem.id ? "Verifying..." : "Verify Payment"}</span>
+                            </button>
+                          )}
+
+                          {/* Buyer: Confirm Quality & Quantity if Handover Done but not confirmed */}
+                          {isBuyer && tItem.procurement_status === 'HANDOVER_COMPLETED' && tItem.quality_status !== 'CONFIRMED' && !isCompleted && !isReleased && (
+                            <button
+                              onClick={() => navigate(`/buyer/pickup-confirmation?agreement_id=${tItem.agreement_id}&transaction_id=${tItem.id}`)}
+                              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] rounded-xl shadow-xs transition-colors flex items-center gap-1 cursor-pointer"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Confirm Quality & Qty</span>
+                            </button>
+                          )}
+
+                          {/* Buyer: Release Payment Button if confirmed but pending */}
+                          {isBuyer && (tItem.quality_status === 'CONFIRMED' || tItem.procurement_status === 'Quality Confirmed') && !isCompleted && !isReleased && (
                             <button
                               onClick={() => handleProcessPayment(tItem.id)}
                               disabled={payingTxId === tItem.id}
-                              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-[11px] rounded-xl shadow-xs transition-colors flex items-center gap-1 cursor-pointer"
+                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-bold text-[11px] rounded-xl shadow-xs transition-colors flex items-center gap-1 cursor-pointer"
                             >
                               <CreditCard className="w-3.5 h-3.5" />
-                              <span>{payingTxId === tItem.id ? t('updating') : t('releasePayment')}</span>
+                              <span>{payingTxId === tItem.id ? "Releasing..." : "Release Payment"}</span>
                             </button>
                           )}
 
@@ -397,8 +510,29 @@ export const FarmerTransactionsPage: React.FC = () => {
               </button>
             </div>
 
+            {/* Handover & Quality Confirmation Banner */}
+            <div className="bg-emerald-50 border border-emerald-300 p-3.5 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs">
+              <div className="flex items-center gap-2 text-emerald-950 font-bold">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>Produce Handover Completed</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] uppercase font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-md border border-emerald-200">
+                  Quality: {selectedTx.quality_status || 'CONFIRMED'}
+                </span>
+                <span className="text-[10px] uppercase font-bold px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-md border border-emerald-200">
+                  Quantity: {selectedTx.quantity_status || 'CONFIRMED'}
+                </span>
+                {selectedTx.quality_grade && (
+                  <span className="text-[10px] uppercase font-bold px-2 py-0.5 bg-blue-100 text-blue-800 rounded-md border border-blue-200">
+                    Grade: {selectedTx.quality_grade}
+                  </span>
+                )}
+              </div>
+            </div>
+
             {/* Produce & Parties Grid */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-xs bg-slate-50 p-4 rounded-2xl border border-slate-200">
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs bg-slate-50 p-4 rounded-2xl border border-slate-200">
               <div>
                 <span className="text-[10px] text-slate-400 font-bold uppercase block">{t('cropAndQuantity')}</span>
                 <span className="font-extrabold text-slate-900">{selectedTx.crop_name} ({selectedTx.quantity} kg)</span>
@@ -420,8 +554,19 @@ export const FarmerTransactionsPage: React.FC = () => {
                 <span className="font-bold text-emerald-700">{selectedTx.procurement_status}</span>
               </div>
               <div>
-                <span className="text-[10px] text-slate-400 font-bold uppercase block">{t('agreementCode')}</span>
-                <span className="font-mono font-bold text-slate-700">{selectedTx.agreement_code || 'AGR-KL'}</span>
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Payment Term</span>
+                <span className="font-bold text-blue-800">Payment as per Negotiation</span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Settlement Mode</span>
+                <span className="font-bold text-emerald-700 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span>
+                  UPI Only
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] text-slate-400 font-bold uppercase block">Payment Due Date</span>
+                <span className="font-mono font-bold text-amber-800">{selectedTx.payment_due_date ? formatDateTime(selectedTx.payment_due_date) : 'Calculated upon Handover'}</span>
               </div>
             </div>
 
@@ -429,62 +574,135 @@ export const FarmerTransactionsPage: React.FC = () => {
             <div className="space-y-2">
               <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                 <Sparkles className="w-4 h-4 text-emerald-600" />
-                <span>{t('financialCalcTitle')}</span>
+                <span>Commercial UPI Settlement Breakdown</span>
               </h4>
 
               <div className="border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100 text-xs">
                 <div className="p-3 bg-white flex justify-between items-center">
-                  <span className="font-medium text-slate-600">{t('grossValueRow')} ({selectedTx.quantity} kg × ₹{selectedTx.price_per_kg}/kg)</span>
-                  <span className="font-mono font-bold text-slate-900">₹{selectedTx.gross_value?.toLocaleString()}</span>
+                  <span className="font-medium text-slate-600">1. Agreed Produce Amount ({selectedTx.quantity} kg × ₹{selectedTx.price_per_kg}/kg)</span>
+                  <span className="font-mono font-bold text-slate-900">₹{(selectedTx.agreed_amount || selectedTx.net_realisation)?.toLocaleString()}</span>
                 </div>
 
-                <div className="p-3 bg-rose-50/40 flex justify-between items-center text-rose-800">
-                  <span className="font-medium">{t('directTransportDeduction')}</span>
-                  <span className="font-mono font-bold">- ₹{selectedTx.transport_cost?.toLocaleString()}</span>
+                <div className="p-3 bg-slate-50/70 flex justify-between items-center text-slate-700">
+                  <div>
+                    <span className="font-medium">2. Actual Labour / Unloading Charges</span>
+                    <span className="text-[10px] text-slate-400 block font-normal">
+                      Status: <strong className="uppercase">{selectedTx.labour_status || 'Agreed'}</strong> {selectedTx.labour_notes && `• ${selectedTx.labour_notes}`}
+                    </span>
+                  </div>
+                  <span className="font-mono font-bold text-blue-700">
+                    {selectedTx.labour_charges ? `+ ₹${selectedTx.labour_charges?.toLocaleString()}` : '₹0'}
+                  </span>
+                </div>
+
+                <div className="p-3 bg-white flex justify-between items-center text-slate-700">
+                  <div>
+                    <span className="font-medium">3. Delay Penalty Amount</span>
+                    <span className="text-[10px] text-slate-400 block font-normal">
+                      {selectedTx.delay_amount ? `Payment delayed by ${selectedTx.delay_days || 1} day(s)` : 'Payment on-time (₹0 delay charge)'}
+                    </span>
+                  </div>
+                  <span className={`font-mono font-bold ${selectedTx.delay_amount ? 'text-amber-700' : 'text-slate-500'}`}>
+                    {selectedTx.delay_amount ? `+ ₹${selectedTx.delay_amount?.toLocaleString()}` : '₹0'}
+                  </span>
                 </div>
 
                 {selectedTx.storage_cost > 0 && (
-                  <div className="p-3 bg-rose-50/40 flex justify-between items-center text-rose-800">
-                    <span className="font-medium">{t('storageHubCost')}</span>
-                    <span className="font-mono font-bold">- ₹{selectedTx.storage_cost?.toLocaleString()}</span>
+                  <div className="p-3 bg-slate-50/70 flex justify-between items-center text-slate-700">
+                    <span className="font-medium">
+                      Cold Storage Cost {selectedTx.cold_storage_required ? `(${selectedTx.storage_duration || 'Applied'})` : ''}
+                    </span>
+                    <span className="font-mono font-bold text-rose-600">
+                      - ₹{selectedTx.storage_cost?.toLocaleString()}
+                    </span>
                   </div>
                 )}
 
                 <div className="p-3.5 bg-emerald-50 flex justify-between items-center text-emerald-950 font-black">
-                  <span className="text-sm">{t('finalNetRealisation')}</span>
-                  <span className="font-mono text-base font-black text-emerald-800">₹{selectedTx.net_realisation?.toLocaleString()}</span>
+                  <span className="text-sm">Total Settlement via UPI</span>
+                  <span className="font-mono text-base font-black text-emerald-800">
+                    ₹{(selectedTx.total_payable_amount || ((selectedTx.agreed_amount || selectedTx.net_realisation) + (selectedTx.labour_charges || 0) + (selectedTx.delay_amount || 0)))?.toLocaleString()}
+                  </span>
                 </div>
               </div>
             </div>
 
-            {/* Payment Tracking Details */}
+            {/* UPI Payment Tracking Details */}
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-2 text-xs">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">{t('paymentTrackingSandbox')}</span>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">UPI Settlement Protocol</span>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <div>
                   <span className="text-slate-400 block">{t('status')}</span>
-                  <span className="font-extrabold text-emerald-700">{selectedTx.payment_status}</span>
+                  <span className="font-extrabold text-emerald-700">
+                    {selectedTx.payment_status === 'RELEASED' || selectedTx.payment_status === 'PAYMENT_RELEASED'
+                      ? 'RELEASED (UPI)'
+                      : (selectedTx.final_status === 'COMPLETED' || selectedTx.payment_status === 'VERIFIED' || selectedTx.payment_status === 'COMPLETED')
+                      ? 'COMPLETED'
+                      : selectedTx.payment_status}
+                  </span>
                 </div>
                 <div>
-                  <span className="text-slate-400 block">{t('paymentMethod')}</span>
-                  <span className="font-medium text-slate-800">{selectedTx.payment?.payment_method || t('directBankTransfer')}</span>
+                  <span className="text-slate-400 block">Payment Mode</span>
+                  <span className="font-bold text-emerald-800">UPI Only</span>
+                </div>
+                <div>
+                  <span className="text-slate-400 block">Farmer UPI ID</span>
+                  <span className="font-mono font-bold text-slate-800">{selectedTx.upi_id || selectedTx.payment?.upi_id || 'farmer@upi'}</span>
                 </div>
                 <div>
                   <span className="text-slate-400 block">{t('paymentRef')}</span>
-                  <span className="font-mono font-bold text-slate-700">{selectedTx.payment?.payment_reference || 'REF-TS-SBX-001'}</span>
+                  <span className="font-mono font-bold text-slate-700">{selectedTx.payment?.payment_reference || 'UPI/KL/729103859201'}</span>
                 </div>
+                {selectedTx.released_at && (
+                  <div>
+                    <span className="text-slate-400 block">Released At</span>
+                    <span className="font-medium text-slate-700">{formatDateTime(selectedTx.released_at)}</span>
+                  </div>
+                )}
+                {selectedTx.verified_at && (
+                  <div>
+                    <span className="text-slate-400 block">Verified At</span>
+                    <span className="font-medium text-slate-700">{formatDateTime(selectedTx.verified_at)}</span>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Modal Actions */}
-            <div className="flex items-center justify-between pt-2">
-              <button
-                onClick={() => handleOpenRating(selectedTx)}
-                className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-sm flex items-center gap-1.5 cursor-pointer"
-              >
-                <Star className="w-4 h-4 fill-slate-950" />
-                <span>{selectedTx.user_feedback ? t('editFeedbackBtn') : t('giveFeedbackBtn')}</span>
-              </button>
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+              <div className="flex items-center gap-2">
+                {/* Farmer: Verify Payment Button */}
+                {isFarmer && (selectedTx.payment_status === 'RELEASED' || selectedTx.payment_status === 'PAYMENT_RELEASED') && (
+                  <button
+                    onClick={() => handleVerifyPayment(selectedTx.id)}
+                    disabled={verifyingTxId === selectedTx.id}
+                    className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-black text-xs rounded-xl shadow flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>{verifyingTxId === selectedTx.id ? "Verifying..." : "Verify Payment"}</span>
+                  </button>
+                )}
+
+                {/* Buyer: Process Payment Button */}
+                {isBuyer && (selectedTx.quality_status === 'CONFIRMED' || selectedTx.procurement_status === 'Quality Confirmed') && selectedTx.payment_status === 'PENDING' && (
+                  <button
+                    onClick={() => handleProcessPayment(selectedTx.id)}
+                    disabled={payingTxId === selectedTx.id}
+                    className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white font-black text-xs rounded-xl shadow flex items-center gap-1.5 cursor-pointer"
+                  >
+                    <CreditCard className="w-4 h-4" />
+                    <span>{payingTxId === selectedTx.id ? "Releasing..." : "Process Payment (Release Funds)"}</span>
+                  </button>
+                )}
+
+                <button
+                  onClick={() => handleOpenRating(selectedTx)}
+                  className="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs rounded-xl shadow-sm flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Star className="w-4 h-4 fill-slate-950" />
+                  <span>{selectedTx.user_feedback ? t('editFeedbackBtn') : t('giveFeedbackBtn')}</span>
+                </button>
+              </div>
 
               <button
                 onClick={() => setSelectedTx(null)}

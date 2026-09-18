@@ -21,7 +21,7 @@ if os.path.exists(env_path):
     except Exception:
         pass
 
-SECRET_KEY = os.environ.get("SECRET_KEY", "kisanlink_telangana_secret_key_change_in_production")
+SECRET_KEY = os.environ.get("SECRET_KEY", "kisanlink_secret_key_change_in_production")
 ALGORITHM = os.environ.get("ALGORITHM", "HS256")
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.environ.get("ACCESS_TOKEN_EXPIRE_MINUTES", "1440"))
 

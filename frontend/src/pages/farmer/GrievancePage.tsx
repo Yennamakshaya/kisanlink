@@ -1,15 +1,24 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useLanguage } from '../../context/LanguageContext';
-import { HelpCircle, PlusCircle, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { useToast } from '../../context/ToastContext';
+import { HelpCircle, PlusCircle, AlertCircle, CheckCircle2, ShieldAlert } from 'lucide-react';
 import axios from 'axios';
 
 export const GrievancePage: React.FC = () => {
   const { t } = useLanguage();
+  const { showToast } = useToast();
+  const [searchParams] = useSearchParams();
+
+  const paramTxId = searchParams.get('transaction_id');
+  const paramTxCode = searchParams.get('transaction_code');
+  const paramCategory = searchParams.get('category');
+
   const [grievances, setGrievances] = useState<any[]>([]);
-  const [category, setCategory] = useState('Payment Issue');
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [showForm, setShowForm] = useState(false);
+  const [category, setCategory] = useState(paramCategory || (paramTxCode ? 'Quality Dispute' : 'Payment Issue'));
+  const [title, setTitle] = useState(paramTxCode ? `Dispute for Transaction: ${paramTxCode}` : '');
+  const [description, setDescription] = useState(paramTxCode ? `Dispute raised regarding produce handover / quality audit discrepancy for Transaction ${paramTxCode}.` : '');
+  const [showForm, setShowForm] = useState(!!paramTxCode);
 
   const fetchGrievances = () => {
     axios.get('/api/workflow/grievances')
@@ -19,23 +28,31 @@ export const GrievancePage: React.FC = () => {
 
   useEffect(() => {
     fetchGrievances();
-  }, []);
+    if (paramTxCode) {
+      setShowForm(true);
+      if (paramCategory) setCategory(paramCategory);
+      setTitle(`Dispute for Transaction: ${paramTxCode}`);
+      setDescription(`Dispute raised regarding produce handover / quality audit discrepancy for Transaction ${paramTxCode}.`);
+    }
+  }, [paramTxCode, paramCategory]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     axios.post('/api/workflow/grievances', {
       category,
       title,
-      description
+      description,
+      transaction_id: paramTxId ? Number(paramTxId) : null,
+      transaction_code: paramTxCode || null
     })
     .then(res => {
-      alert(`Grievance Registered Successfully! Reference Code: ${res.data.grievance_code}`);
+      showToast(`Grievance Registered Successfully! Reference Code: ${res.data.grievance_code}`, "success");
       setTitle('');
       setDescription('');
       setShowForm(false);
       fetchGrievances();
     })
-    .catch(err => alert("Error: " + err.response?.data?.detail));
+    .catch(err => showToast("Error: " + (err.response?.data?.detail || "Could not register grievance"), "error"));
   };
 
   return (
@@ -57,6 +74,16 @@ export const GrievancePage: React.FC = () => {
         </button>
       </div>
 
+      {paramTxCode && showForm && (
+        <div className="bg-amber-50 border border-amber-300 p-4 rounded-xl flex items-center gap-3">
+          <ShieldAlert className="w-6 h-6 text-amber-600 flex-shrink-0" />
+          <div className="text-xs">
+            <p className="font-bold text-amber-900">Transaction Dispute Linked</p>
+            <p className="text-amber-800">This dispute will be formally associated with Transaction <span className="font-mono font-bold">{paramTxCode}</span> in the audit log.</p>
+          </div>
+        </div>
+      )}
+
       {showForm && (
         <form onSubmit={handleSubmit} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
           <h3 className="font-bold text-sm text-slate-800 uppercase">{t('submitGrievanceDetails')}</h3>
@@ -68,14 +95,14 @@ export const GrievancePage: React.FC = () => {
                 onChange={(e) => setCategory(e.target.value)}
                 className="w-full mt-1 p-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl font-medium"
               >
-                <option value="Payment Issue">{t('catPaymentIssue')}</option>
-                <option value="Quality Dispute">{t('catQualityDispute')}</option>
-                <option value="Quantity Dispute">{t('catQuantityDispute')}</option>
-                <option value="Pickup Issue">{t('catPickupIssue')}</option>
-                <option value="Delivery Issue">{t('catDeliveryIssue')}</option>
-                <option value="Buyer Issue">{t('catBuyerIssue')}</option>
-                <option value="Agreement Issue">{t('catAgreementIssue')}</option>
-                <option value="Other">{t('catOther')}</option>
+                <option value="Quality mismatch">Quality mismatch (Grade/specification discrepancy)</option>
+                <option value="Quantity mismatch">Quantity mismatch (Weight difference)</option>
+                <option value="Payment delay">Payment delay (Settlement timeline delay)</option>
+                <option value="Buyer cancellation">Buyer cancellation</option>
+                <option value="Farmer cancellation">Farmer cancellation</option>
+                <option value="Pickup delay">Pickup delay (Driver / Vehicle arrival delay)</option>
+                <option value="Transport problem">Transport problem (Transit damage / Breakdown)</option>
+                <option value="Other">Other Operational Issue</option>
               </select>
             </div>
             <div>
@@ -120,11 +147,24 @@ export const GrievancePage: React.FC = () => {
           {grievances.map((g) => (
             <div key={g.id} className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-2">
               <div className="flex items-center justify-between">
-                <span className="font-mono text-xs font-bold text-emerald-800">{g.grievance_code}</span>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono text-xs font-bold text-emerald-800">{g.grievance_code}</span>
+                  {g.transaction_code && (
+                    <span className="font-mono text-[10px] bg-slate-200 text-slate-700 px-2 py-0.5 rounded font-bold">
+                      Txn: {g.transaction_code}
+                    </span>
+                  )}
+                </div>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                  g.status === 'Resolved' ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-900'
+                  g.status === 'RESOLVED' || g.status === 'Resolved'
+                    ? 'bg-emerald-100 text-emerald-800'
+                    : g.status === 'UNDER REVIEW' || g.status === 'Under Review'
+                    ? 'bg-blue-100 text-blue-800'
+                    : g.status === 'ESCALATED'
+                    ? 'bg-purple-100 text-purple-800'
+                    : 'bg-amber-100 text-amber-900'
                 }`}>
-                  {g.status === 'Resolved' ? t('statusResolved') : g.status === 'Open' ? t('statusOpen') : g.status}
+                  {g.status}
                 </span>
               </div>
               <h4 className="font-bold text-sm text-slate-900">{g.title} ({g.category})</h4>

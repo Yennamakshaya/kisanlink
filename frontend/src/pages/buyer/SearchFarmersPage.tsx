@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useLanguage } from '../../context/LanguageContext';
+import { useToast } from '../../context/ToastContext';
 import { Search, Sprout, ShieldCheck, ArrowRight, Sparkles, MapPin } from 'lucide-react';
 import axios from 'axios';
 
 export const SearchFarmersPage: React.FC = () => {
   const { user } = useAuth();
   const { t } = useLanguage();
+  const { showToast } = useToast();
   const navigate = useNavigate();
 
   const [farmersProduce, setFarmersProduce] = useState<any[]>([]);
@@ -48,15 +50,15 @@ export const SearchFarmersPage: React.FC = () => {
       quantity: offerQty,
       price_per_kg: offerPrice,
       pickup_date: "2026-09-12",
-      delivery_location: "Cherlapally, Hyderabad, Telangana",
+      delivery_location: "Cherlapally, Hyderabad",
       message: offerMsg || `Offer for ${offerModalItem.crop_name}: ₹${offerPrice}/kg for ${offerQty} kg`
     })
     .then(res => {
-      alert("Offer sent to farmer successfully! Proceeding to negotiation.");
+      showToast("Offer sent to farmer successfully! Proceeding to negotiation.", "success");
       setOfferModalItem(null);
       navigate('/buyer/negotiations');
     })
-    .catch(err => alert("Offer error: " + err.response?.data?.detail));
+    .catch(err => showToast("Offer error: " + (err.response?.data?.detail || "Could not send offer"), "error"));
   };
 
   return (
@@ -65,7 +67,7 @@ export const SearchFarmersPage: React.FC = () => {
         <div>
           <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
             <Sprout className="w-6 h-6 text-emerald-600" />
-            {t('searchFarmers')} — Telangana
+            {t('searchFarmers')}
           </h1>
           <p className="text-xs text-slate-500">{t('telanganaFocus')}</p>
         </div>

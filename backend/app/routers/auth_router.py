@@ -96,7 +96,7 @@ def register_farmer(payload: FarmerRegisterSchema, db: Session = Depends(get_db)
     if not payload.email or "@" not in payload.email:
         raise HTTPException(status_code=400, detail="Please enter a valid email address.")
     if not payload.district or not payload.district.strip():
-        raise HTTPException(status_code=400, detail="Please select your Telangana district.")
+        raise HTTPException(status_code=400, detail="Please select your district.")
     if payload.password != payload.confirm_password:
         raise HTTPException(status_code=400, detail="Passwords do not match.")
     if len(payload.password) < 6:
@@ -120,6 +120,7 @@ def register_farmer(payload: FarmerRegisterSchema, db: Session = Depends(get_db)
         username=payload.username.strip(),
         password_hash=get_password_hash(payload.password),
         role="farmer",
+        status="PENDING VERIFICATION",
         preferred_language=payload.preferred_language
     )
     db.add(user)
@@ -138,7 +139,9 @@ def register_farmer(payload: FarmerRegisterSchema, db: Session = Depends(get_db)
         aadhaar_masked=masked_aadh,
         crops_grown=payload.crops_grown,
         farm_size=payload.farm_size,
-        status="verified"
+        status="PENDING VERIFICATION",
+        kyc_status="PENDING VERIFICATION",
+        land_records_status="PENDING VERIFICATION"
     )
     db.add(farmer)
     db.commit()
@@ -201,12 +204,14 @@ def register_buyer(payload: BuyerRegisterSchema, db: Session = Depends(get_db)):
         username=payload.email.split("@")[0].strip(),
         password_hash=get_password_hash(payload.password),
         role="buyer",
+        status="PENDING VERIFICATION",
         preferred_language="en"
     )
     db.add(user)
     db.commit()
     db.refresh(user)
 
+    cert_url = payload.gst_doc_url or f"/uploads/{payload.certificate_name or 'Business_Registration_Certificate.pdf'}"
     buyer = BuyerProfile(
         user_id=user.id,
         company_name=payload.company_name.strip(),
@@ -217,33 +222,37 @@ def register_buyer(payload: BuyerRegisterSchema, db: Session = Depends(get_db)):
         district=payload.district.strip() if payload.district else "Hyderabad",
         state="Telangana",
         pincode=payload.pincode.strip() if payload.pincode else "500001",
+        gstin=payload.gstin.strip(),
+        pan=payload.pan.strip(),
         gstin_masked=masked_gst,
         pan_masked=masked_pan,
         udyam_number=payload.udyam_number,
         buyer_category=payload.buyer_category or "Bulk Buyer",
         procurement_categories=payload.procurement_categories or "Agricultural Produce",
-        verification_status="pending", # Pending verification by Admin
-        gst_doc_url="/uploads/gst_doc_pending.pdf"
+        verification_status="PENDING VERIFICATION",
+        business_reg_status="PENDING VERIFICATION",
+        trade_license_status="PENDING VERIFICATION",
+        gst_doc_url=cert_url
     )
     db.add(buyer)
     db.commit()
 
-    # Notify User
+    # Welcome notification to Buyer
     create_notification(
         db=db,
         user_id=user.id,
-        title="Buyer Registration Submitted",
-        message=f"Thank you {payload.company_name}! Your profile is pending verification by Admin.",
-        notification_type="warning",
+        title="Welcome to KisanLink!",
+        message="Your buyer registration has been received. Our administrative team will review your business credentials shortly.",
+        notification_type="SYSTEM",
         related_id=str(user.id),
         related_type="USER"
     )
 
-    # Notify Admins
+    # Notify Admins (do NOT expose GSTIN/PAN in notifications)
     notify_admins(
         db=db,
         title="New Buyer Registration",
-        message=f"New buyer {payload.company_name} (GSTIN: {payload.gstin}) registered and pending verification.",
+        message=f"New buyer {payload.company_name} registered and pending verification.",
         notification_type="ADMIN_BUYER_REGISTRATION",
         related_id=str(user.id),
         related_type="ADMIN_BUYER"
@@ -272,8 +281,12 @@ def login(payload: LoginSchema, db: Session = Depends(get_db)):
         raise HTTPException(status_code=401, detail="Invalid credentials.")
 
     # Check user account status
-    if hasattr(user, 'status') and user.status and user.status.upper() not in ["ACTIVE", "VERIFIED"]:
-        raise HTTPException(status_code=403, detail="Your account is not active. Please contact support.")
+    if hasattr(user, 'status') and user.status:
+        st = user.status.upper()
+        if st in ["SUSPENDED"]:
+            raise HTTPException(status_code=403, detail="Your account has been suspended by Administrator. Please contact support.")
+        if st in ["REJECTED"]:
+            raise HTTPException(status_code=403, detail="Your registration was rejected by Administrator.")
 
     # Strict Role Verification
     req_role = (payload.role or "").strip().lower()
@@ -293,16 +306,20 @@ def login(payload: LoginSchema, db: Session = Depends(get_db)):
 
     # Check status if buyer
     if user_role == "buyer" and user.buyer_profile:
-        if user.buyer_profile.verification_status == "rejected":
+        b_ver = (user.buyer_profile.verification_status or "").upper()
+        if b_ver == "REJECTED":
             raise HTTPException(status_code=403, detail="Your buyer registration was rejected by Admin. Please contact support.")
-        elif user.buyer_profile.verification_status == "suspended":
+        elif b_ver == "SUSPENDED":
             raise HTTPException(status_code=403, detail="Your buyer account is currently suspended by Admin.")
 
     name = user.username
+    effective_status = getattr(user, "status", "ACTIVE") or "ACTIVE"
     if user_role == "farmer" and user.farmer_profile:
         name = user.farmer_profile.full_name
+        effective_status = user.farmer_profile.status or effective_status
     elif user_role == "buyer" and user.buyer_profile:
         name = user.buyer_profile.company_name
+        effective_status = user.buyer_profile.verification_status or effective_status
     elif user_role == "admin":
         name = "Administrator"
 
@@ -312,7 +329,7 @@ def login(payload: LoginSchema, db: Session = Depends(get_db)):
         role=user_role,
         user_id=user.id,
         name=name,
-        status=getattr(user, "status", "ACTIVE") or "ACTIVE"
+        status=effective_status
     )
 
 @router.get("/me")
@@ -333,6 +350,8 @@ def get_me(current_user: User = Depends(get_current_user), db: Session = Depends
                 "crops_grown": p.crops_grown,
                 "farm_size": p.farm_size,
                 "status": p.status,
+                "account_status": p.status,
+                "kyc_status": getattr(p, "kyc_status", "pending") or "pending",
                 "rating": p.rating,
                 "completed_transactions": p.completed_transactions,
                 "reliability_score": p.reliability_score
@@ -348,9 +367,15 @@ def get_me(current_user: User = Depends(get_current_user), db: Session = Depends
                 "city": p.city,
                 "district": p.district,
                 "state": p.state,
+                "address": p.address or "Plot 42, Food Processing Zone, Cherlapally",
+                "gstin": p.gstin or (p.gstin_masked.replace(" (Verified)", "").strip() if p.gstin_masked else "36AAAAA0000A1Z5"),
+                "pan": p.pan or (p.pan_masked.strip() if p.pan_masked else "ABCDE1234F"),
                 "gstin_masked": p.gstin_masked,
                 "pan_masked": p.pan_masked,
+                "udyam_number": p.udyam_number or "UDYAM-TG-05-0012345",
+                "buyer_category": p.buyer_category or "Food Processor & Bulk Exporter",
                 "verification_status": p.verification_status,
+                "certificate_url": p.gst_doc_url,
                 "rating": p.rating,
                 "completed_transactions": p.completed_transactions,
                 "reliability_score": p.reliability_score
@@ -361,6 +386,7 @@ def get_me(current_user: User = Depends(get_current_user), db: Session = Depends
         "mobile_number": current_user.mobile_number,
         "username": current_user.username,
         "role": current_user.role,
+        "status": current_user.status,
         "preferred_language": current_user.preferred_language,
         "profile": profile
     }

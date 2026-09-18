@@ -17,7 +17,14 @@ export const LoginPage: React.FC = () => {
 
   const { login } = useAuth();
   const navigate = useNavigate();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+
+  React.useEffect(() => {
+    const roleParam = searchParams.get('role') as 'farmer' | 'buyer' | 'admin';
+    if (roleParam && ['farmer', 'buyer', 'admin'].includes(roleParam)) {
+      setRole(roleParam);
+    }
+  }, [searchParams]);
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,7 +53,35 @@ export const LoginPage: React.FC = () => {
     .finally(() => setLoading(false));
   };
 
-  const roleText = role === 'farmer' ? t('farmerRole') : role === 'buyer' ? t('buyerRole') : t('adminRole');
+  const getButtonText = () => {
+    if (loading) return t('authenticating');
+    if (role === 'buyer') {
+      return language === 'te'
+        ? `${t('buyerRole')} ${t('login')}`
+        : language === 'hi'
+        ? `${t('buyerRole')} ${t('login')}`
+        : "Buyer Login";
+    }
+    if (role === 'admin') {
+      return language === 'te'
+        ? `${t('adminRole')} ${t('login')}`
+        : language === 'hi'
+        ? `${t('adminRole')} ${t('login')}`
+        : "Admin Login";
+    }
+    return language === 'te'
+      ? `${t('farmerRole')} ${t('login')}`
+      : language === 'hi'
+      ? `${t('farmerRole')} ${t('login')}`
+      : "Farmer Login";
+  };
+
+  const getButtonBgColor = () => {
+    if (role === 'buyer') return 'bg-blue-600 hover:bg-blue-700';
+    if (role === 'admin') return 'bg-purple-600 hover:bg-purple-700';
+    return 'bg-emerald-600 hover:bg-emerald-700';
+  };
+
 
   return (
     <div className="min-h-[calc(100vh-4rem)] bg-slate-100 flex items-center justify-center p-4">
@@ -149,15 +184,11 @@ export const LoginPage: React.FC = () => {
           <button
             type="submit"
             disabled={loading}
-            className={`w-full py-3 text-white font-extrabold text-sm rounded-xl shadow-md transition-colors disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer ${
-              role === 'farmer'
-                ? 'bg-emerald-600 hover:bg-emerald-700'
-                : role === 'buyer'
-                ? 'bg-blue-600 hover:bg-blue-700'
-                : 'bg-purple-600 hover:bg-purple-700'
-            }`}
+            className={`w-full py-3 text-white font-extrabold text-sm rounded-xl shadow-md transition-colors disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer ${getButtonBgColor()}`}
           >
-            <span>{loading ? t('authenticating') : `${roleText} ${t('login')}`}</span>
+            <span key={role} className="no-translate">
+              {getButtonText()}
+            </span>
             <ArrowRight className="w-4 h-4" />
           </button>
 

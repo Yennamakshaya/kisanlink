@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from app.database import Base, engine, SessionLocal
 from app.models import (
     User, FarmerProfile, BuyerProfile, Crop, Produce, Market, MarketPrice,
-    BuyerRequirement, Offer, Negotiation, Agreement, ProcurementSlot,
+    BuyerRequirement, FarmerRequest, Offer, Negotiation, Agreement, ProcurementSlot,
     Procurement, QualityConfirmation, Payment, Transaction, RatingFeedback,
     Grievance, Notification, StorageFacility
 )
@@ -39,6 +39,9 @@ def run_schema_migrations(db: Session):
         "ALTER TABLE offers ADD COLUMN updated_at DATETIME",
         "ALTER TABLE negotiations ADD COLUMN sender_id INTEGER",
         "ALTER TABLE negotiations ADD COLUMN status VARCHAR DEFAULT 'ACTIVE'",
+        "ALTER TABLE agreements ADD COLUMN created_at DATETIME",
+        "ALTER TABLE procurements ADD COLUMN created_at DATETIME",
+        "ALTER TABLE payments ADD COLUMN created_at DATETIME",
         "ALTER TABLE procurement_slots ADD COLUMN location VARCHAR",
         "ALTER TABLE procurement_slots ADD COLUMN crop_name VARCHAR",
         "ALTER TABLE procurement_slots ADD COLUMN quantity FLOAT",
@@ -54,6 +57,58 @@ def run_schema_migrations(db: Session):
         "ALTER TABLE payments ADD COLUMN payment_reference VARCHAR",
         "ALTER TABLE notifications ADD COLUMN related_id VARCHAR",
         "ALTER TABLE notifications ADD COLUMN related_type VARCHAR",
+        "ALTER TABLE produce ADD COLUMN lot_code VARCHAR",
+        "ALTER TABLE produce ADD COLUMN is_fpo BOOLEAN DEFAULT 0",
+        "ALTER TABLE produce ADD COLUMN fpo_name VARCHAR",
+        "ALTER TABLE produce ADD COLUMN aggregated_farmers_count INTEGER DEFAULT 1",
+        "ALTER TABLE produce ADD COLUMN quality_parameters TEXT",
+        "ALTER TABLE produce ADD COLUMN storage_available BOOLEAN DEFAULT 0",
+        "ALTER TABLE produce ADD COLUMN storage_cost_per_day FLOAT DEFAULT 1.5",
+        "ALTER TABLE produce ADD COLUMN spoilage_risk_percent FLOAT DEFAULT 3.0",
+        "ALTER TABLE market_prices ADD COLUMN arrival_volume_tonnes FLOAT DEFAULT 125.0",
+        "ALTER TABLE market_prices ADD COLUMN data_status VARCHAR DEFAULT 'DEMO'",
+        "ALTER TABLE market_prices ADD COLUMN last_updated VARCHAR DEFAULT 'Today 08:30 AM'",
+        "ALTER TABLE buyer_requirements ADD COLUMN min_quality_grade VARCHAR DEFAULT 'Grade A'",
+        "ALTER TABLE buyer_requirements ADD COLUMN target_price_min FLOAT",
+        "ALTER TABLE buyer_requirements ADD COLUMN target_price_max FLOAT",
+        "ALTER TABLE buyer_requirements ADD COLUMN procurement_location VARCHAR",
+        "ALTER TABLE buyer_requirements ADD COLUMN payment_terms VARCHAR DEFAULT '100% on Quality Confirmation'",
+        "ALTER TABLE grievances ADD COLUMN transaction_id INTEGER",
+        "ALTER TABLE grievances ADD COLUMN transaction_code VARCHAR",
+        "ALTER TABLE offers ADD COLUMN request_id INTEGER",
+        "ALTER TABLE offers ADD COLUMN quality VARCHAR DEFAULT 'Grade A'",
+        "ALTER TABLE negotiations ADD COLUMN request_id INTEGER",
+        "ALTER TABLE negotiations ADD COLUMN receiver_id INTEGER",
+        "ALTER TABLE agreements ADD COLUMN request_id INTEGER",
+        "ALTER TABLE farmer_profiles ADD COLUMN kyc_status VARCHAR DEFAULT 'verified'",
+        "ALTER TABLE farmer_profiles ADD COLUMN land_records_status VARCHAR DEFAULT 'verified'",
+        "ALTER TABLE buyer_profiles ADD COLUMN business_reg_status VARCHAR DEFAULT 'verified'",
+        "ALTER TABLE produce ADD COLUMN flagged_reason VARCHAR",
+        "ALTER TABLE offers ADD COLUMN cold_storage_required BOOLEAN DEFAULT 0",
+        "ALTER TABLE offers ADD COLUMN storage_duration VARCHAR",
+        "ALTER TABLE negotiations ADD COLUMN payment_terms VARCHAR DEFAULT 'Within 3 Days'",
+        "ALTER TABLE negotiations ADD COLUMN cold_storage_required BOOLEAN DEFAULT 0",
+        "ALTER TABLE negotiations ADD COLUMN storage_cost FLOAT DEFAULT 0.0",
+        "ALTER TABLE negotiations ADD COLUMN storage_duration VARCHAR",
+        "ALTER TABLE agreements ADD COLUMN payment_terms VARCHAR DEFAULT 'Within 3 Days'",
+        "ALTER TABLE agreements ADD COLUMN cold_storage_required BOOLEAN DEFAULT 0",
+        "ALTER TABLE agreements ADD COLUMN storage_duration VARCHAR",
+        "ALTER TABLE transactions ADD COLUMN payment_terms VARCHAR DEFAULT 'Within 3 Days'",
+        "ALTER TABLE transactions ADD COLUMN payment_due_date VARCHAR",
+        "ALTER TABLE transactions ADD COLUMN cold_storage_required BOOLEAN DEFAULT 0",
+        "ALTER TABLE transactions ADD COLUMN storage_duration VARCHAR",
+        "ALTER TABLE transactions ADD COLUMN labour_charges FLOAT DEFAULT 0.0",
+        "ALTER TABLE transactions ADD COLUMN labour_notes VARCHAR",
+        "ALTER TABLE transactions ADD COLUMN labour_status VARCHAR DEFAULT 'PENDING'",
+        "ALTER TABLE transactions ADD COLUMN labour_proposed_by VARCHAR",
+        "ALTER TABLE transactions ADD COLUMN delay_amount FLOAT DEFAULT 0.0",
+        "ALTER TABLE transactions ADD COLUMN delay_days INTEGER DEFAULT 0",
+        "ALTER TABLE transactions ADD COLUMN total_payable_amount FLOAT",
+        "ALTER TABLE transactions ADD COLUMN payment_method VARCHAR DEFAULT 'UPI'",
+        "ALTER TABLE transactions ADD COLUMN upi_id VARCHAR",
+        "ALTER TABLE payments ADD COLUMN upi_id VARCHAR",
+        "ALTER TABLE payments ADD COLUMN labour_charges FLOAT DEFAULT 0.0",
+        "ALTER TABLE payments ADD COLUMN delay_amount FLOAT DEFAULT 0.0",
     ]
     for sql in migrations:
         try:
@@ -61,6 +116,54 @@ def run_schema_migrations(db: Session):
             db.commit()
         except Exception:
             db.rollback()
+
+    # Ensure all tables (including audit_logs) exist
+    Base.metadata.create_all(bind=engine)
+
+    # Seed initial audit logs if empty
+    from app.models import AuditLog
+    if db.query(AuditLog).count() == 0:
+        initial_logs = [
+            AuditLog(
+                username="admin",
+                role="admin",
+                action="SYSTEM_INITIALIZED",
+                related_record="SYS-CORE-2026",
+                entity_type="SYSTEM",
+                details="KisanLink administrative oversight system initialized with full telemetry.",
+                created_at=datetime.datetime.utcnow() - datetime.timedelta(days=2)
+            ),
+            AuditLog(
+                username="admin",
+                role="admin",
+                action="VERIFIED_BUYER",
+                related_record="BUYER-001 (Balaji Trades)",
+                entity_type="BUYER",
+                details="Verified GST certificate and trade license documentation.",
+                created_at=datetime.datetime.utcnow() - datetime.timedelta(days=1, hours=4)
+            ),
+            AuditLog(
+                username="admin",
+                role="admin",
+                action="VERIFIED_FARMER",
+                related_record="FARMER-001 (Ramesh Reddy)",
+                entity_type="FARMER",
+                details="Verified Aadhaar KYC and Land Revenue passbook records for Shadnagar farmgate.",
+                created_at=datetime.datetime.utcnow() - datetime.timedelta(days=1)
+            ),
+            AuditLog(
+                username="admin",
+                role="admin",
+                action="AUDITED_LOT",
+                related_record="LOT-001 (Tomato Grade A)",
+                entity_type="PRODUCE",
+                details="Validated harvest parameters and perishability holding window.",
+                created_at=datetime.datetime.utcnow() - datetime.timedelta(hours=6)
+            ),
+        ]
+        db.add_all(initial_logs)
+        db.commit()
+
 
 def init_admin_account(db: Session):
     load_env()
@@ -106,7 +209,7 @@ def seed_db():
     db: Session = SessionLocal()
     
     try:
-        print("Seeding KisanLink Telangana Database...")
+        print("Seeding KisanLink Database...")
         
         # 1. Initial Admin Account (Seeded safely)
         admin_user = init_admin_account(db)
@@ -191,7 +294,7 @@ def seed_db():
             db.add(fprof)
             db.commit()
             
-        # 3. Primary Demo Buyer (Shree Foods Pvt Ltd)
+        # 3. Primary Demo Buyer (Balaji Trades)
         buyer_user = User(
             email="buyer@kisanlink.demo",
             mobile_number="9876543211",
@@ -206,7 +309,7 @@ def seed_db():
         
         buyer_profile = BuyerProfile(
             user_id=buyer_user.id,
-            company_name="Shree Foods Pvt Ltd",
+            company_name="Balaji Trades",
             company_id="CMP-TG-2024-8841",
             contact_person="Srinivas Rao",
             address="Plot 42, Food Processing Zone, Cherlapally",
@@ -214,8 +317,10 @@ def seed_db():
             district="Medchal-Malkajgiri",
             state="Telangana",
             pincode="500051",
-            gstin_masked="36AAAAA0000A1Z5 (Verified)",
-            pan_masked="ABCDE1234F",
+            gstin="36AAAAA0000A1Z5",
+            pan="ABCDE1234F",
+            gstin_masked="36AAAAA****1Z5",
+            pan_masked="ABCDE****F",
             udyam_number="UDYAM-TG-05-0012345",
             buyer_category="Food Processor & Bulk Exporter",
             procurement_categories="Tomato, Vegetables, Spices",
@@ -264,8 +369,10 @@ def seed_db():
                 district=dist if dist in ["Hyderabad", "Warangal", "Nizamabad"] else "Rangareddy",
                 state="Telangana",
                 pincode=f"5000{idx}2",
-                gstin_masked=f"36BBBBB000{idx}A1Z9",
-                pan_masked=f"FGHIJ567{idx}K",
+                gstin=f"36BBBBB000{idx}A1Z9",
+                pan=f"FGHIJ567{idx}K",
+                gstin_masked=f"36BBBBB****{idx}A1Z9",
+                pan_masked=f"FGHIJ****{idx}K",
                 udyam_number=f"UDYAM-TG-05-00{idx}567",
                 buyer_category=bcat,
                 procurement_categories="Paddy, Maize, Turmeric, Chilli, Vegetables",
@@ -328,12 +435,15 @@ def seed_db():
                     avg_price=avg_p,
                     price_change=p_chg,
                     price_date=today_str,
-                    data_source="APMC Telangana Live Portal (Demo Data)"
+                    data_source="APMC Market Benchmark (Demo / Historical Data)",
+                    arrival_volume_tonnes=price_benchmarks[cname][1] * 4.5,
+                    data_status="DEMO",
+                    last_updated="Today 08:30 AM"
                 )
                 db.add(mp)
         db.commit()
 
-        # 6. Primary Demo Produce (Ramesh Reddy - Tomato 500kg)
+        # 6. Primary Demo Produce (Ramesh Reddy - Tomato 500kg Lot)
         primary_produce = Produce(
             farmer_id=farmer_profile.id,
             crop_name="Tomato",
@@ -351,7 +461,13 @@ def seed_db():
             pincode="509216",
             description="Freshly harvested farm-fresh Grade A tomatoes from Shadnagar red soil fields. Firm texture, uniform red color, zero damage.",
             images="https://images.unsplash.com/photo-1592924357228-91a4daadcfea?w=600&auto=format&fit=crop",
-            status="Available"
+            status="Available",
+            lot_code="LOT-00125",
+            is_fpo=False,
+            quality_parameters="Moisture: 12%, Uniformity: 95%, Certified Pesticide Safe",
+            storage_available=True,
+            storage_cost_per_day=1.5,
+            spoilage_risk_percent=3.0
         )
         db.add(primary_produce)
         db.commit()
@@ -389,7 +505,7 @@ def seed_db():
             db.add(prod)
         db.commit()
 
-        # 7. Buyer Requirements (Shree Foods Requirement)
+        # 7. Buyer Requirements (Balaji Trades Requirement)
         primary_req = BuyerRequirement(
             buyer_id=buyer_profile.id,
             crop_name="Tomato",
@@ -446,7 +562,7 @@ def seed_db():
         n2 = Notification(
             user_id=buyer_user.id,
             title="Buyer Profile Verified",
-            message="Your GST document has been approved by Telangana Admin. You can now send offers to farmers.",
+            message="Your GST document has been approved by Platform Admin. You can now send offers to farmers.",
             notification_type="success"
         )
         db.add_all([n1, n2])

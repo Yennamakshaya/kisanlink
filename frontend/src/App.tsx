@@ -40,6 +40,9 @@ import { AdminDashboard } from './pages/admin/AdminDashboard';
 import { BuyerMgmtPage } from './pages/admin/BuyerMgmtPage';
 import { FarmerMgmtPage } from './pages/admin/FarmerMgmtPage';
 
+// Shared Pages
+import { MessagesPage } from './pages/shared/MessagesPage';
+
 // Public Layout (NO Sidebar Ever)
 const PublicLayout: React.FC<{ onOpenAssistant: () => void }> = ({ onOpenAssistant }) => {
   return (
@@ -158,11 +161,14 @@ const AppContent: React.FC = () => {
           <Route path="/farmer/handover" element={<HandoverPage />} />
           <Route path="/farmer/transactions" element={<FarmerTransactionsPage />} />
           <Route path="/farmer/grievance" element={<GrievancePage />} />
+          <Route path="/farmer/messages" element={<MessagesPage portalType="farmer" />} />
         </Route>
 
         {/* Buyer Portal - Buyer Sidebar Only */}
         <Route element={<BuyerLayout onOpenAssistant={() => setIsAssistantOpen(true)} />}>
           <Route path="/buyer/dashboard" element={<BuyerDashboard />} />
+          <Route path="/buyer/requests" element={<NegotiationsPage />} />
+          <Route path="/buyer/incoming-requests" element={<NegotiationsPage />} />
           <Route path="/buyer/requirements" element={<BuyerDashboard />} />
           <Route path="/buyer/add-requirement" element={<BuyerDashboard />} />
           <Route path="/buyer/search-farmers" element={<SearchFarmersPage />} />
@@ -173,21 +179,24 @@ const AppContent: React.FC = () => {
           <Route path="/buyer/pickup-confirmation" element={<PickupConfirmationPage />} />
           <Route path="/buyer/transactions" element={<FarmerTransactionsPage />} />
           <Route path="/buyer/grievance" element={<GrievancePage />} />
+          <Route path="/buyer/messages" element={<MessagesPage portalType="buyer" />} />
         </Route>
 
         {/* Admin Portal - Admin Sidebar Only */}
         <Route element={<AdminLayout onOpenAssistant={() => setIsAssistantOpen(true)} />}>
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
-          <Route path="/admin/buyers" element={<BuyerMgmtPage />} />
-          <Route path="/admin/farmers" element={<FarmerMgmtPage />} />
-          <Route path="/admin/market-data" element={<AdminDashboard />} />
-          <Route path="/admin/procurements" element={<AdminDashboard />} />
-          <Route path="/admin/transactions" element={<FarmerTransactionsPage />} />
-          <Route path="/admin/payments" element={<FarmerTransactionsPage />} />
-          <Route path="/admin/feedback" element={<AdminDashboard />} />
-          <Route path="/admin/grievances" element={<AdminDashboard />} />
-          <Route path="/admin/analytics" element={<AdminDashboard />} />
-          <Route path="/admin/notifications" element={<AdminDashboard />} />
+          <Route path="/admin/farmers" element={<Navigate to="/admin/dashboard?tab=farmers" replace />} />
+          <Route path="/admin/buyers" element={<Navigate to="/admin/dashboard?tab=buyers" replace />} />
+          <Route path="/admin/produce" element={<Navigate to="/admin/dashboard?tab=produce" replace />} />
+          <Route path="/admin/market-data" element={<Navigate to="/admin/dashboard?tab=market" replace />} />
+          <Route path="/admin/procurements" element={<Navigate to="/admin/dashboard?tab=procurement" replace />} />
+          <Route path="/admin/transactions" element={<Navigate to="/admin/dashboard?tab=transactions" replace />} />
+          <Route path="/admin/payments" element={<Navigate to="/admin/dashboard?tab=transactions" replace />} />
+          <Route path="/admin/feedback" element={<Navigate to="/admin/dashboard?tab=grievances" replace />} />
+          <Route path="/admin/grievances" element={<Navigate to="/admin/dashboard?tab=grievances" replace />} />
+          <Route path="/admin/analytics" element={<Navigate to="/admin/dashboard?tab=overview" replace />} />
+          <Route path="/admin/notifications" element={<Navigate to="/admin/dashboard?tab=notifications" replace />} />
+          <Route path="/admin/audit-logs" element={<Navigate to="/admin/dashboard?tab=audit-logs" replace />} />
         </Route>
 
         {/* Fallback Catch-All */}
@@ -203,12 +212,16 @@ const AppContent: React.FC = () => {
   );
 };
 
+import { ToastProvider } from './context/ToastContext';
+
 export const App: React.FC = () => {
   return (
     <Router>
       <AuthProvider>
         <LanguageProvider>
-          <AppContent />
+          <ToastProvider>
+            <AppContent />
+          </ToastProvider>
         </LanguageProvider>
       </AuthProvider>
     </Router>

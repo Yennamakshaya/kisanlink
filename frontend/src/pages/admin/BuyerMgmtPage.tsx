@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Building2, ShieldCheck, CheckCircle2, XCircle, FileText } from 'lucide-react';
 import { useLanguage } from '../../context/LanguageContext';
+import { useToast } from '../../context/ToastContext';
 import axios from 'axios';
 
 export const BuyerMgmtPage: React.FC = () => {
   const { t } = useLanguage();
+  const { showToast } = useToast();
   const [buyers, setBuyers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -21,8 +23,11 @@ export const BuyerMgmtPage: React.FC = () => {
 
   const handleVerifyAction = (buyerId: number, action: 'approve' | 'reject' | 'suspend') => {
     axios.put(`/api/admin/buyers/${buyerId}/verify?action=${action}`)
-      .then(() => fetchBuyers())
-      .catch(err => alert("Error: " + err.response?.data?.detail));
+      .then(() => {
+        showToast(`Buyer status updated (${action}) successfully!`, "success");
+        fetchBuyers();
+      })
+      .catch(err => showToast("Error: " + (err.response?.data?.detail || "Could not update buyer verification"), "error"));
   };
 
   return (
@@ -43,7 +48,7 @@ export const BuyerMgmtPage: React.FC = () => {
                 <th className="p-3">{t('companyName')}</th>
                 <th className="p-3">{t('contactPerson')}</th>
                 <th className="p-3">{t('district')}</th>
-                <th className="p-3">{t('gstinMasked')}</th>
+                <th className="p-3">GSTIN</th>
                 <th className="p-3">{t('category')}</th>
                 <th className="p-3">{t('verificationStatus')}</th>
                 <th className="p-3">{t('actions')}</th>
@@ -55,7 +60,7 @@ export const BuyerMgmtPage: React.FC = () => {
                   <td className="p-3 font-extrabold text-slate-900">{b.company_name}</td>
                   <td className="p-3">{b.contact_person}</td>
                   <td className="p-3">{b.district}</td>
-                  <td className="p-3 font-mono">{b.gstin_masked}</td>
+                  <td className="p-3 font-mono font-bold text-slate-800">{b.gstin || b.gstin_masked}</td>
                   <td className="p-3">{b.buyer_category}</td>
                   <td className="p-3">
                     <span className={`font-bold px-2 py-0.5 rounded-full text-[10px] ${

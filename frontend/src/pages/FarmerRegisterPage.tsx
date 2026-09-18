@@ -118,10 +118,10 @@ export const FarmerRegisterPage: React.FC = () => {
       farm_size: "5 Acres"
     })
       .then(() => {
-        setSuccessMessage(t('successFarmerAccountCreated'));
+        setSuccessMessage("Your Farmer account has been registered successfully! Account status: PENDING VERIFICATION by Administrator.");
         setTimeout(() => {
           navigate('/login?role=farmer');
-        }, 2000);
+        }, 3000);
       })
       .catch(err => {
         setValidationError(err.response?.data?.detail || t('errorAuthFailed'));
@@ -227,7 +227,7 @@ export const FarmerRegisterPage: React.FC = () => {
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-700">{t('telanganaDistrict')} *</label>
+                <label className="text-xs font-bold text-slate-700">{t('district')} *</label>
                 <select
                   value={district}
                   onChange={(e) => setDistrict(e.target.value)}

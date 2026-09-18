@@ -8,6 +8,7 @@ import {
   MessageSquare, FileCheck, Calendar, Shield, AlertTriangle, Info, CheckCircle2
 } from 'lucide-react';
 import axios from 'axios';
+import { formatDateTime } from '../utils/dateUtils';
 
 interface NavbarProps {
   onOpenAssistant: () => void;
@@ -24,6 +25,7 @@ interface NotificationItem {
   related_id?: string | number;
   related_type?: string;
   created_at?: string;
+  raw_created_at?: string;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ onOpenAssistant }) => {
@@ -117,8 +119,38 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAssistant }) => {
     const typeUpper = (n.type || n.notification_type || '').toUpperCase();
     const relTypeUpper = (n.related_type || '').toUpperCase();
     const relId = n.related_id;
+    const titleUpper = (n.title || '').toUpperCase();
 
-    if (typeUpper.includes('NEGOTIATION') || relTypeUpper === 'NEGOTIATION') {
+    // 1. Message / Chat Notification -> Open exact related chat directly
+    const isMessageNotif =
+      typeUpper.includes('MESSAGE') ||
+      relTypeUpper === 'COMMUNICATION' ||
+      typeUpper === 'ADMIN_MESSAGE' ||
+      typeUpper === 'USER_MESSAGE' ||
+      titleUpper.includes('NEW MESSAGE');
+
+    if (isMessageNotif) {
+      const convId = relId ? String(relId) : '';
+      if (role === 'admin') {
+        const userIdMatch = convId.match(/\d+/);
+        const userId = userIdMatch ? userIdMatch[0] : '';
+        // Dispatch window event for instant in-page reaction if already on admin dashboard
+        window.dispatchEvent(new CustomEvent('open-admin-chat', {
+          detail: { conversation_id: convId, user_id: userId }
+        }));
+        navigate(`/admin/dashboard?conversation_id=${encodeURIComponent(convId)}${userId ? `&chat_user_id=${userId}` : ''}&open_chat=true&t=${Date.now()}`);
+      } else if (role === 'farmer') {
+        navigate(`/farmer/messages?conversation_id=${encodeURIComponent(convId)}`);
+      } else if (role === 'buyer') {
+        navigate(`/buyer/messages?conversation_id=${encodeURIComponent(convId)}`);
+      }
+      return;
+    }
+
+    if (typeUpper.includes('REQUEST') || relTypeUpper === 'FARMER_REQUEST') {
+      const targetPath = role === 'buyer' ? '/buyer/negotiations?tab=requests' : '/farmer/negotiations?tab=requests';
+      navigate(targetPath);
+    } else if (typeUpper.includes('NEGOTIATION') || relTypeUpper === 'NEGOTIATION') {
       let offerParam = '';
       if (relId) {
         const cleanId = String(relId).replace('NEG-', '').replace(/^0+/, '');
@@ -162,7 +194,17 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAssistant }) => {
   const getActionLabel = (n: NotificationItem) => {
     const typeUpper = (n.type || n.notification_type || '').toUpperCase();
     const relTypeUpper = (n.related_type || '').toUpperCase();
+    const titleUpper = (n.title || '').toUpperCase();
 
+    if (
+      typeUpper.includes('MESSAGE') || 
+      relTypeUpper === 'COMMUNICATION' || 
+      typeUpper === 'ADMIN_MESSAGE' || 
+      typeUpper === 'USER_MESSAGE' ||
+      titleUpper.includes('NEW MESSAGE')
+    ) {
+      return t('platformAccess');
+    }
     if (typeUpper.includes('NEGOTIATION') || relTypeUpper === 'NEGOTIATION') return t('viewNegotiation');
     if (typeUpper.includes('AGREEMENT') || relTypeUpper === 'AGREEMENT') return t('viewAgreement');
     if (typeUpper.includes('SLOT') || relTypeUpper === 'SLOT' || relTypeUpper === 'SLOT_BOOKED') return t('viewBooking');
@@ -173,6 +215,18 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAssistant }) => {
 
   const getIconForType = (n: NotificationItem) => {
     const typeUpper = (n.type || n.notification_type || '').toUpperCase();
+    const relTypeUpper = (n.related_type || '').toUpperCase();
+    const titleUpper = (n.title || '').toUpperCase();
+
+    if (
+      typeUpper.includes('MESSAGE') || 
+      relTypeUpper === 'COMMUNICATION' || 
+      typeUpper === 'ADMIN_MESSAGE' || 
+      typeUpper === 'USER_MESSAGE' ||
+      titleUpper.includes('NEW MESSAGE')
+    ) {
+      return <MessageSquare className="w-4 h-4 text-indigo-500" />;
+    }
     if (typeUpper.includes('NEGOTIATION')) return <MessageSquare className="w-4 h-4 text-amber-500" />;
     if (typeUpper.includes('AGREEMENT')) return <FileCheck className="w-4 h-4 text-emerald-500" />;
     if (typeUpper.includes('SLOT')) return <Calendar className="w-4 h-4 text-blue-500" />;
@@ -216,7 +270,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAssistant }) => {
             </div>
             <div>
               <span className="font-extrabold text-xl tracking-tight text-white flex items-center gap-1.5">
-                KisanLink <span className="text-xs bg-emerald-700 text-emerald-200 px-2 py-0.5 rounded-full font-medium border border-emerald-600">Telangana</span>
+                KisanLink
               </span>
               <p className="text-[11px] text-emerald-200 hidden sm:block">
                 {t('tagline')}
@@ -311,7 +365,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAssistant }) => {
                     <div className="max-h-96 overflow-y-auto divide-y divide-slate-100">
                       {loadingNotifs ? (
                         <div className="p-8 text-center text-xs text-slate-400">
-                          Loading notifications...
+                          {t('Loading notifications...')}
                         </div>
                       ) : notifications.length === 0 ? (
                         <div className="p-8 text-center text-slate-400 space-y-2">
@@ -348,8 +402,14 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenAssistant }) => {
                                 {n.message}
                               </p>
                               <div className="flex items-center justify-between pt-1 text-[10px]">
-                                <span className="text-slate-400 font-semibold">{n.created_at || t('justNow')}</span>
-                                <span className="text-emerald-700 font-extrabold flex items-center gap-0.5 hover:underline">
+                                <span className="text-slate-400 font-semibold">{formatDateTime(n.created_at || n.raw_created_at)}</span>
+                                <span
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleNotificationClick(n);
+                                  }}
+                                  className="text-emerald-700 hover:text-emerald-800 font-extrabold flex items-center gap-0.5 hover:underline cursor-pointer"
+                                >
                                   {getActionLabel(n)} <ArrowRight className="w-3 h-3" />
                                 </span>
                               </div>

@@ -108,6 +108,12 @@ def run_notifications_e2e_test():
     assert "NEGOTIATION_ACCEPTED" in b_types or "AGREEMENT_CREATED" in b_types
     print("[OK] Step 4: Farmer accepted offer -> Agreement generated and notifications sent.")
 
+    # Sign agreement to satisfy workflow guard (both Farmer and Buyer must sign)
+    sign_res1 = client.post(f"/api/workflow/agreements/{agr_id}/sign", json={"accepted_tc": True}, headers=farmer_headers)
+    assert sign_res1.status_code == 200
+    sign_res2 = client.post(f"/api/workflow/agreements/{agr_id}/sign", json={"accepted_tc": True}, headers=buyer_headers)
+    assert sign_res2.status_code == 200
+
     # 6. Farmer books slot -> Both Farmer & Buyer receive SLOT_BOOKED notifications
     slot_res = client.post("/api/workflow/procurement/book-slot", json={
         "agreement_id": agr_id,

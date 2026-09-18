@@ -25,7 +25,7 @@ export const TelanganaMap: React.FC<TelanganaMapProps> = ({
       const map = L.map(mapRef.current).setView([17.27, 78.35], 9);
       
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors | KisanLink Telangana'
+        attribution: '&copy; OpenStreetMap contributors | KisanLink'
       }).addTo(map);
 
       leafletInstance.current = map;

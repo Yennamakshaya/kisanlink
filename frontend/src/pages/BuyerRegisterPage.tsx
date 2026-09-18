@@ -20,36 +20,88 @@ export const BuyerRegisterPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  // Business Verification (GST Certificate)
+  // Business Verification (Business Certificate)
   const [gstFile, setGstFile] = useState<File | null>(null);
   const [gstPreviewName, setGstPreviewName] = useState<string | null>(null);
+  const [uploadedDocInfo, setUploadedDocInfo] = useState<{
+    name: string;
+    type: string;
+    size: string;
+    status: string;
+  } | null>(null);
 
   // Status & Error Messages
   const [validationError, setValidationError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  const getGstin = () => {
+    return companyId.trim() || "36AAAAA0000A1Z5";
+  };
+
+  const getPan = () => {
+    return "ABCDE1234F";
+  };
+
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      const validTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
-      if (!validTypes.includes(file.type)) {
-        setValidationError(t('errorInvalidFileType'));
+      const fileName = file.name;
+      const ext = fileName.split('.').pop()?.toLowerCase();
+      const validExtensions = ['pdf', 'jpg', 'jpeg', 'png'];
+      const validMimeTypes = ['application/pdf', 'image/jpeg', 'image/jpg', 'image/png'];
+
+      // 1. ACCEPTED FILE TYPES: Allow ONLY PDF, JPG, JPEG, PNG
+      if (!ext || !validExtensions.includes(ext) || (!validMimeTypes.includes(file.type) && file.type !== '')) {
+        setValidationError("Invalid file type. Please upload a PDF, JPG, JPEG, or PNG file.");
+        setGstFile(null);
+        setGstPreviewName(null);
+        setUploadedDocInfo(null);
+        if (e.target) e.target.value = '';
         return;
       }
-      if (file.size > 5 * 1024 * 1024) {
-        setValidationError(t('errorFileSizeLimit'));
+
+      // 2. FILE SIZE: Maximum file size 10 MB
+      if (file.size > 10 * 1024 * 1024) {
+        setValidationError("File size exceeds 10 MB. Please upload a smaller file.");
+        setGstFile(null);
+        setGstPreviewName(null);
+        setUploadedDocInfo(null);
+        if (e.target) e.target.value = '';
         return;
       }
+
       setValidationError(null);
       setGstFile(file);
       setGstPreviewName(file.name);
+
+      let typeLabel = ext.toUpperCase();
+      if (ext === 'pdf') {
+        typeLabel = 'PDF';
+      } else if (ext === 'jpg' || ext === 'jpeg') {
+        typeLabel = 'JPEG';
+      } else if (ext === 'png') {
+        typeLabel = 'PNG';
+      }
+
+      const sizeKb = file.size / 1024;
+      const sizeLabel = sizeKb >= 1024 
+        ? `${(sizeKb / 1024).toFixed(2)} MB` 
+        : `${sizeKb.toFixed(1)} KB`;
+
+      setUploadedDocInfo({
+        name: file.name,
+        type: typeLabel,
+        size: sizeLabel,
+        status: "✓ Document uploaded successfully"
+      });
     }
   };
 
   const handleRemoveFile = () => {
     setGstFile(null);
     setGstPreviewName(null);
+    setUploadedDocInfo(null);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -105,10 +157,12 @@ export const BuyerRegisterPage: React.FC = () => {
       pan: "ABCDE1234F",
       udyam_number: "UDYAM-TG-05-0012345",
       buyer_category: "Food Processor & Bulk Buyer",
-      procurement_categories: "Tomato, Paddy, Cotton, Vegetables"
+      procurement_categories: "Tomato, Paddy, Cotton, Vegetables",
+      certificate_name: gstFile?.name || gstPreviewName || "Business_Registration_Certificate.pdf",
+      gst_doc_url: `/uploads/${gstFile?.name || gstPreviewName || "Business_Registration_Certificate.pdf"}`
     })
       .then(res => {
-        setSuccessMessage(t('successBuyerSubmitted'));
+        setSuccessMessage("Your Buyer registration and certificate have been submitted successfully! Your account status is PENDING VERIFICATION by Administrator.");
         setTimeout(() => {
           navigate('/login?role=buyer');
         }, 3000);
@@ -250,7 +304,7 @@ export const BuyerRegisterPage: React.FC = () => {
             </div>
           </div>
 
-          {/* Section 4: Business Verification (GST Upload) */}
+          {/* Section 4: Business Verification (Business Certificate Upload) */}
           <div className="space-y-3">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2">
               <h3 className="text-xs font-extrabold text-blue-900 uppercase tracking-wider flex items-center gap-2">
@@ -262,35 +316,133 @@ export const BuyerRegisterPage: React.FC = () => {
               </span>
             </div>
 
-            <div className="space-y-2">
-              <label className="text-xs font-bold text-slate-700">{t('uploadGstCert')} *</label>
+            <div className="space-y-3">
+              <label className="text-xs font-bold text-slate-700">Business Certificate *</label>
               
-              {gstPreviewName ? (
-                <div className="bg-slate-50 p-4 rounded-xl border border-slate-300 flex items-center justify-between">
-                  <div className="flex items-center space-x-3">
-                    <FileText className="w-6 h-6 text-blue-600" />
-                    <div>
-                      <p className="text-xs font-bold text-slate-800">{gstPreviewName}</p>
-                      <p className="text-[10px] text-slate-500">{t('docUploadedSuccess')}</p>
+              {gstFile && uploadedDocInfo ? (
+                <div className="space-y-4">
+                  {/* Uploaded Document Information */}
+                  <div className="bg-slate-50 p-4 rounded-2xl border border-blue-200 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className="p-2.5 bg-blue-100 text-blue-700 rounded-xl">
+                          <FileText className="w-6 h-6" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-900 break-all">{uploadedDocInfo.name}</p>
+                          <p className="text-[11px] font-bold text-emerald-600 mt-0.5">
+                            {uploadedDocInfo.status}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRemoveFile}
+                        className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
+                        title={t('removeDoc')}
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 pt-3 border-t border-slate-200 text-xs">
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block">File name</span>
+                        <span className="font-semibold text-slate-800 text-[11px] truncate block" title={uploadedDocInfo.name}>
+                          {uploadedDocInfo.name}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block">File type</span>
+                        <span className="font-semibold text-slate-800 text-[11px] block">
+                          {uploadedDocInfo.type}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block">File size</span>
+                        <span className="font-semibold text-slate-800 text-[11px] block">
+                          {uploadedDocInfo.size}
+                        </span>
+                      </div>
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleRemoveFile}
-                    className="p-1 text-red-600 hover:bg-red-50 rounded-lg transition-colors cursor-pointer"
-                    title={t('removeDoc')}
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
+
+                  {/* Business Certificate Information */}
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                      <h4 className="text-xs font-extrabold text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
+                        <ShieldCheck className="w-4 h-4 text-blue-600" />
+                        Business Certificate Information
+                      </h4>
+                      <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded">
+                        Verified Format
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-xs">
+                      <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                        <span className="text-slate-500 font-medium">Document Type:</span>
+                        <span className="font-bold text-slate-800">GST Registration & Trade License</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                        <span className="text-slate-500 font-medium">GSTIN:</span>
+                        <span className="font-mono font-bold text-emerald-700">{getGstin()}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                        <span className="text-slate-500 font-medium">PAN:</span>
+                        <span className="font-mono font-bold text-slate-800">{getPan()}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                        <span className="text-slate-500 font-medium">Issuing Authority:</span>
+                        <span className="font-bold text-slate-800 text-right">Government of Telangana • Commercial Taxes</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                        <span className="text-slate-500 font-medium">Company Name:</span>
+                        <span className="font-bold text-slate-800">{companyName.trim() || 'Balaji Trades'}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                        <span className="text-slate-500 font-medium">Business Type:</span>
+                        <span className="font-bold text-slate-800">Food Processor & Bulk Buyer</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                        <span className="text-slate-500 font-medium">Authorized Representative:</span>
+                        <span className="font-bold text-slate-800">{companyName.trim() || 'Balaji Trades'}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                        <span className="text-slate-500 font-medium">Phone:</span>
+                        <span className="font-bold text-slate-800">{mobileNumber.trim() || '+91 98765 43211'}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                        <span className="text-slate-500 font-medium">Email:</span>
+                        <span className="font-bold text-slate-800">{email.trim() || 'buyer@kisanlink.in'}</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                        <span className="text-slate-500 font-medium">City:</span>
+                        <span className="font-bold text-slate-800">Hyderabad</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                        <span className="text-slate-500 font-medium">District:</span>
+                        <span className="font-bold text-slate-800">Medchal-Malkajgiri</span>
+                      </div>
+                      <div className="flex justify-between border-b border-slate-100 pb-1.5">
+                        <span className="text-slate-500 font-medium">Address:</span>
+                        <span className="font-bold text-slate-800 text-right">Plot No 42, IDA Cherlapally, Phase II, Hyderabad - 500051</span>
+                      </div>
+                      <div className="flex justify-between sm:col-span-2 pt-0.5">
+                        <span className="text-slate-500 font-medium">Udyam Number:</span>
+                        <span className="font-mono font-bold text-slate-800">UDYAM-TG-05-0012345</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <div className="border-2 border-dashed border-slate-300 rounded-2xl p-6 text-center bg-slate-50 hover:bg-slate-100 transition-colors">
                   <Upload className="w-8 h-8 text-blue-600 mx-auto mb-2" />
-                  <p className="text-xs font-bold text-slate-700">{t('clickToUploadGst')}</p>
-                  <p className="text-[11px] text-slate-500 mt-1">{t('gstUploadNote')}</p>
+                  <p className="text-xs font-bold text-slate-700">Click to upload Business Certificate</p>
+                  <p className="text-[11px] text-slate-500 mt-1">Supported formats: PDF, JPG, JPEG, PNG (Max 10MB)</p>
                   <input
                     type="file"
-                    accept=".pdf,.jpg,.jpeg,.png"
+                    accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png"
                     onChange={handleFileUpload}
                     className="hidden"
                     id="gst-upload-input"
@@ -299,7 +451,7 @@ export const BuyerRegisterPage: React.FC = () => {
                     htmlFor="gst-upload-input"
                     className="mt-3 inline-block px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl cursor-pointer shadow-sm transition-colors"
                   >
-                    {t('selectDocument')}
+                    Select Document
                   </label>
                 </div>
               )}

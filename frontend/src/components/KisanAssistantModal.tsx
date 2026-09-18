@@ -27,7 +27,7 @@ export const KisanAssistantModal: React.FC<KisanAssistantModalProps> = ({ isOpen
       {
         sender: 'bot',
         text: t('kisanWelcome'),
-        label: `${t('kisanAssistantTitle')} — ${t('prototypeAi')}`
+        label: t('kisanAssistantTitle')
       }
     ]);
   }, [language]);
@@ -37,6 +37,8 @@ export const KisanAssistantModal: React.FC<KisanAssistantModalProps> = ({ isOpen
   const quickPrompts = [
     t('promptTomato'),
     t('promptBuyer'),
+    t('How to control Pink Bollworm in Cotton?'),
+    t('How do digital agreements work?'),
     t('promptNetIncome'),
     t('promptAddCrop')
   ];
@@ -59,7 +61,7 @@ export const KisanAssistantModal: React.FC<KisanAssistantModalProps> = ({ isOpen
         sender: 'bot',
         text: res.data.answer,
         intent: res.data.intent,
-        label: res.data.label || `${t('kisanAssistantTitle')} — ${t('prototypeAi')}`
+        label: res.data.label || t('kisanAssistantTitle')
       };
       setMessages(prev => [...prev, botMsg]);
     })
@@ -71,7 +73,7 @@ export const KisanAssistantModal: React.FC<KisanAssistantModalProps> = ({ isOpen
           : language === 'hi'
           ? "क्षमा करें, वर्तमान में आपके अनुरोध को संसाधित करने में असमर्थ हूँ। कृपया पुनः प्रयास करें।"
           : "Sorry, I am currently unable to process your request. Please try again.",
-        label: `${t('kisanAssistantTitle')} — ${t('prototypeAi')}`
+        label: t('kisanAssistantTitle')
       };
       setMessages(prev => [...prev, errorMsg]);
     })
@@ -91,8 +93,8 @@ export const KisanAssistantModal: React.FC<KisanAssistantModalProps> = ({ isOpen
             <div>
               <h3 className="font-bold text-base flex items-center gap-1.5">
                 {t('kisanAssistantTitle')}
-                <span className="text-[10px] bg-emerald-800 text-amber-300 font-semibold px-2 py-0.5 rounded-full border border-emerald-600">
-                  {t('prototypeAi')}
+                <span className="text-[10px] bg-emerald-800 text-emerald-200 font-semibold px-2 py-0.5 rounded-full border border-emerald-600">
+                  {t('Online')}
                 </span>
               </h3>
               <p className="text-[11px] text-emerald-200">{t('kisanAssistantSubtitle')}</p>

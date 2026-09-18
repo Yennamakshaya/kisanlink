@@ -36,6 +36,8 @@ class FarmerProfile(Base):
     crops_grown = Column(String, nullable=True) # JSON or comma separated
     farm_size = Column(String, nullable=True) # e.g. "5 Acres"
     status = Column(String, default="verified") # 'verified', 'pending', 'suspended'
+    kyc_status = Column(String, default="verified") # 'verified', 'pending', 'rejected'
+    land_records_status = Column(String, default="verified") # 'verified', 'pending', 'rejected'
     rating = Column(Float, default=4.8)
     completed_transactions = Column(Integer, default=12)
     reliability_score = Column(Float, default=95.0)
@@ -63,12 +65,16 @@ class BuyerProfile(Base):
     district = Column(String, nullable=False)
     state = Column(String, default="Telangana")
     pincode = Column(String, nullable=False)
+    gstin = Column(String, nullable=True)
+    pan = Column(String, nullable=True)
     gstin_masked = Column(String, nullable=False)
     pan_masked = Column(String, nullable=False)
     udyam_number = Column(String, nullable=True)
     buyer_category = Column(String, nullable=False)
     procurement_categories = Column(String, nullable=True)
     verification_status = Column(String, default="verified") # 'pending', 'verified', 'rejected', 'suspended'
+    business_reg_status = Column(String, default="verified") # 'pending', 'verified', 'rejected'
+    trade_license_status = Column(String, default="verified") # 'pending', 'verified', 'rejected'
     gst_doc_url = Column(String, nullable=True)
     rating = Column(Float, default=4.7)
     completed_transactions = Column(Integer, default=24)
@@ -98,7 +104,16 @@ class Produce(Base):
     pincode = Column(String, nullable=False)
     description = Column(Text, nullable=True)
     images = Column(Text, nullable=True) # comma separated or JSON string
-    status = Column(String, default="Available") # 'Available', 'In Negotiation', 'Agreed', 'Deactivated'
+    status = Column(String, default="Available") # 'Available', 'In Negotiation', 'Agreed', 'Deactivated', 'Flagged'
+    flagged_reason = Column(String, nullable=True)
+    lot_code = Column(String, unique=True, index=True, nullable=True) # e.g. 'LOT-00125'
+    is_fpo = Column(Boolean, default=False)
+    fpo_name = Column(String, nullable=True)
+    aggregated_farmers_count = Column(Integer, default=1)
+    quality_parameters = Column(Text, nullable=True) # e.g. "Moisture: 12%, Uniformity: 95%"
+    storage_available = Column(Boolean, default=False)
+    storage_cost_per_day = Column(Float, default=1.5)
+    spoilage_risk_percent = Column(Float, default=3.0)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     farmer = relationship("FarmerProfile", back_populates="produces")
@@ -126,7 +141,10 @@ class MarketPrice(Base):
     avg_price = Column(Float, nullable=False)
     price_change = Column(Float, default=0.0)
     price_date = Column(String, nullable=False)
-    data_source = Column(String, default="Demo Market Data (APMC Telangana)")
+    data_source = Column(String, default="APMC Market Intelligence Network")
+    arrival_volume_tonnes = Column(Float, default=125.0)
+    data_status = Column(String, default="VERIFIED") # 'VERIFIED', 'LIVE', 'HISTORICAL'
+    last_updated = Column(String, default="Today 08:30 AM")
 
     market = relationship("Market")
 
@@ -139,37 +157,74 @@ class BuyerRequirement(Base):
     variety = Column(String, nullable=True)
     required_quantity = Column(Float, nullable=False)
     quality = Column(String, default="Grade A")
+    min_quality_grade = Column(String, default="Grade A")
     max_price = Column(Float, nullable=False)
+    target_price_min = Column(Float, nullable=True)
+    target_price_max = Column(Float, nullable=True)
     preferred_district = Column(String, nullable=False)
     preferred_mandal = Column(String, nullable=True)
+    procurement_location = Column(String, nullable=True)
     required_by_date = Column(String, nullable=False)
     pickup_delivery = Column(String, default="Pickup") # 'Pickup' or 'Delivery'
+    payment_terms = Column(String, default="100% on Quality Confirmation")
     additional_reqs = Column(Text, nullable=True)
     status = Column(String, default="Active") # 'Active', 'Fulfilled', 'Closed'
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     buyer = relationship("BuyerProfile", back_populates="requirements")
 
+class FarmerRequest(Base):
+    __tablename__ = "farmer_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    request_code = Column(String, unique=True, index=True, nullable=True)
+    farmer_id = Column(Integer, ForeignKey("farmer_profiles.id"), nullable=False)
+    buyer_id = Column(Integer, ForeignKey("buyer_profiles.id"), nullable=False)
+    produce_id = Column(Integer, ForeignKey("produce.id"), nullable=True)
+    requirement_id = Column(Integer, ForeignKey("buyer_requirements.id"), nullable=True)
+    crop_name = Column(String, nullable=False)
+    quantity = Column(Float, nullable=False)
+    quality = Column(String, default="Grade A")
+    expected_price = Column(Float, nullable=False)
+    message = Column(Text, nullable=True)
+    status = Column(String, default="PENDING") # 'PENDING', 'ACCEPTED', 'REJECTED', 'CANCELLED', 'EXPIRED'
+    offer_id = Column(Integer, ForeignKey("offers.id"), nullable=True)
+    accepted_at = Column(DateTime, nullable=True)
+    accepted_by = Column(Integer, nullable=True)
+    rejected_at = Column(DateTime, nullable=True)
+    rejected_by = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.datetime.utcnow, onupdate=datetime.datetime.utcnow)
+
+    farmer = relationship("FarmerProfile")
+    buyer = relationship("BuyerProfile")
+    produce = relationship("Produce")
+    offer = relationship("Offer", foreign_keys=[offer_id])
+
 class Offer(Base):
     __tablename__ = "offers"
 
     id = Column(Integer, primary_key=True, index=True)
+    request_id = Column(Integer, ForeignKey("farmer_requests.id"), nullable=True)
     produce_id = Column(Integer, ForeignKey("produce.id"), nullable=True)
     requirement_id = Column(Integer, ForeignKey("buyer_requirements.id"), nullable=True)
     farmer_id = Column(Integer, ForeignKey("farmer_profiles.id"), nullable=False)
     buyer_id = Column(Integer, ForeignKey("buyer_profiles.id"), nullable=False)
     crop_name = Column(String, nullable=False)
     quantity = Column(Float, nullable=False)
+    quality = Column(String, default="Grade A")
     price_per_kg = Column(Float, nullable=False)
     total_value = Column(Float, nullable=False)
-    transport_cost = Column(Float, default=1500.0)
+    transport_cost = Column(Float, default=0.0)
     storage_cost = Column(Float, default=0.0)
+    cold_storage_required = Column(Boolean, default=False)
+    storage_duration = Column(String, nullable=True)
     net_realisation = Column(Float, default=0.0)
     pickup_date = Column(String, nullable=False)
     delivery_location = Column(String, nullable=False)
-    payment_terms = Column(String, default="100% on Quality Confirmation")
+    payment_terms = Column(String, default="Within 3 Days")
     message = Column(Text, nullable=True)
-    status = Column(String, default="ACTIVE") # 'ACTIVE', 'BUYER_PENDING', 'FARMER_PENDING', 'ACCEPTED', 'REJECTED', 'CANCELLED'
+    status = Column(String, default="ACTIVE") # 'ACTIVE', 'BUYER_PENDING', 'FARMER_PENDING', 'OFFER_SENT', 'ACCEPTED', 'REJECTED', 'CANCELLED'
     sender_role = Column(String, nullable=False) # 'buyer' or 'farmer'
     current_offer_by = Column(String, default="farmer") # 'farmer' or 'buyer'
     agreement_id = Column(Integer, nullable=True)
@@ -183,6 +238,7 @@ class Offer(Base):
     farmer = relationship("FarmerProfile")
     buyer = relationship("BuyerProfile")
     produce = relationship("Produce")
+    request = relationship("FarmerRequest", foreign_keys=[request_id])
     negotiations = relationship("Negotiation", back_populates="offer", cascade="all, delete-orphan")
 
 class Negotiation(Base):
@@ -190,11 +246,17 @@ class Negotiation(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     offer_id = Column(Integer, ForeignKey("offers.id"), nullable=False)
+    request_id = Column(Integer, nullable=True)
     sender_id = Column(Integer, nullable=True)
     sender_role = Column(String, nullable=False) # 'buyer' or 'farmer'
     sender_name = Column(String, nullable=False)
+    receiver_id = Column(Integer, nullable=True)
     price_per_kg = Column(Float, nullable=False)
     quantity = Column(Float, nullable=False)
+    payment_terms = Column(String, default="Within 3 Days")
+    cold_storage_required = Column(Boolean, default=False)
+    storage_cost = Column(Float, default=0.0)
+    storage_duration = Column(String, nullable=True)
     message = Column(Text, nullable=True)
     status = Column(String, default="ACTIVE")
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
@@ -207,6 +269,7 @@ class Agreement(Base):
     id = Column(Integer, primary_key=True, index=True)
     agreement_code = Column(String, unique=True, index=True, nullable=False)
     offer_id = Column(Integer, ForeignKey("offers.id"), nullable=False)
+    request_id = Column(Integer, nullable=True)
     produce_id = Column(Integer, ForeignKey("produce.id"), nullable=True)
     farmer_id = Column(Integer, ForeignKey("farmer_profiles.id"), nullable=False)
     buyer_id = Column(Integer, ForeignKey("buyer_profiles.id"), nullable=False)
@@ -215,18 +278,22 @@ class Agreement(Base):
     quality = Column(String, nullable=False)
     final_price = Column(Float, nullable=False)
     total_value = Column(Float, nullable=False)
-    transport_cost = Column(Float, default=1500.0)
+    transport_cost = Column(Float, default=0.0)
     storage_cost = Column(Float, default=0.0)
+    cold_storage_required = Column(Boolean, default=False)
+    storage_duration = Column(String, nullable=True)
     other_costs = Column(Float, default=0.0)
     net_realisation = Column(Float, nullable=False)
     procurement_date = Column(String, nullable=False)
     last_tx_date = Column(String, nullable=False)
+    payment_terms = Column(String, default="Payment as per Negotiation")
     payment_deadline = Column(String, nullable=False)
     pickup_deadline = Column(String, nullable=False)
     terms_and_conditions = Column(Text, nullable=False)
     farmer_signed = Column(Boolean, default=False)
     buyer_signed = Column(Boolean, default=False)
     signed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
     status = Column(String, default="Draft") # 'Draft', 'Signed', 'Cancelled'
 
     farmer = relationship("FarmerProfile")
@@ -266,9 +333,10 @@ class Procurement(Base):
     pickup_location = Column(String, nullable=False)
     delivery_location = Column(String, nullable=False)
     distance_km = Column(Float, default=45.0)
-    transport_cost = Column(Float, default=1500.0)
+    transport_cost = Column(Float, default=0.0)
     handover_notes = Column(Text, nullable=True)
     handover_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     agreement = relationship("Agreement")
     farmer = relationship("FarmerProfile")
@@ -297,9 +365,13 @@ class Payment(Base):
     amount = Column(Float, nullable=False)
     amount_due = Column(Float, nullable=True)
     status = Column(String, default="Pending") # 'Pending', 'Processing', 'Completed', 'Failed'
-    payment_method = Column(String, default="Direct Bank Transfer (Prototype Sandbox)")
+    payment_method = Column(String, default="UPI")
+    upi_id = Column(String, nullable=True)
+    labour_charges = Column(Float, default=0.0)
+    delay_amount = Column(Float, default=0.0)
     payment_reference = Column(String, nullable=True)
     payment_date = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     procurement = relationship("Procurement")
     transaction = relationship("Transaction", back_populates="payments")
@@ -319,14 +391,35 @@ class Transaction(Base):
     quantity = Column(Float, nullable=False)
     price_per_kg = Column(Float, nullable=False)
     gross_value = Column(Float, nullable=False)
-    transport_cost = Column(Float, default=1500.0)
+    transport_cost = Column(Float, default=0.0)
     storage_cost = Column(Float, default=0.0)
+    cold_storage_required = Column(Boolean, default=False)
+    storage_duration = Column(String, nullable=True)
     other_costs = Column(Float, default=0.0)
     net_realisation = Column(Float, nullable=False)
     net_price_per_kg = Column(Float, nullable=False)
+    payment_terms = Column(String, default="Payment as per Negotiation")
+    payment_due_date = Column(String, nullable=True)
+    labour_charges = Column(Float, default=0.0)
+    labour_notes = Column(String, nullable=True)
+    labour_status = Column(String, default="PENDING") # 'PENDING', 'PROPOSED', 'AGREED'
+    labour_proposed_by = Column(String, nullable=True) # 'farmer' or 'buyer'
+    delay_amount = Column(Float, default=0.0)
+    delay_days = Column(Integer, default=0)
+    total_payable_amount = Column(Float, nullable=True)
+    payment_method = Column(String, default="UPI")
+    upi_id = Column(String, nullable=True)
     procurement_status = Column(String, default="HANDOVER_COMPLETED")
-    payment_status = Column(String, default="PENDING") # 'PENDING', 'PROCESSING', 'COMPLETED', 'FAILED'
+    payment_status = Column(String, default="PENDING") # 'PENDING', 'RELEASED', 'VERIFIED', 'COMPLETED'
     final_status = Column(String, default="HANDOVER_COMPLETED")
+    quality_status = Column(String, default="PENDING")
+    quantity_status = Column(String, default="PENDING")
+    quality_grade = Column(String, nullable=True)
+    payment_amount = Column(Float, nullable=True)
+    released_by = Column(Integer, nullable=True)
+    released_at = Column(DateTime, nullable=True)
+    verified_by = Column(Integer, nullable=True)
+    verified_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     completed_at = Column(DateTime, nullable=True)
 
@@ -365,14 +458,17 @@ class Grievance(Base):
     id = Column(Integer, primary_key=True, index=True)
     grievance_code = Column(String, unique=True, nullable=False)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=True)
+    transaction_code = Column(String, nullable=True)
     category = Column(String, nullable=False) # 'Payment Issue', 'Quality Dispute', etc.
     title = Column(String, nullable=False)
     description = Column(Text, nullable=False)
-    status = Column(String, default="Open") # 'Open', 'Under Review', 'Resolved'
+    status = Column(String, default="Open") # 'Open', 'Under Review', 'Resolved', 'Escalated', 'Closed'
     admin_remarks = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     user = relationship("User")
+    transaction = relationship("Transaction")
 
 class Notification(Base):
     __tablename__ = "notifications"
@@ -400,3 +496,38 @@ class StorageFacility(Base):
     available_capacity_tn = Column(Float, nullable=False)
     cost_per_kg = Column(Float, default=0.5)
     status = Column(String, default="Operational")
+
+class AuditLog(Base):
+    __tablename__ = "audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    username = Column(String, nullable=False, default="admin")
+    role = Column(String, nullable=False, default="admin")
+    action = Column(String, nullable=False)
+    related_record = Column(String, nullable=False)
+    entity_type = Column(String, nullable=True)
+    details = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow)
+
+    user = relationship("User")
+
+class AdminMessage(Base):
+    __tablename__ = "admin_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    admin_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    conversation_id = Column(String, nullable=False, index=True)
+    sender_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    sender_role = Column(String, nullable=False, default="admin")
+    sender_name = Column(String, nullable=True)
+    message = Column(Text, nullable=False)
+    read_status = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.datetime.utcnow, index=True)
+
+    admin = relationship("User", foreign_keys=[admin_id])
+    user = relationship("User", foreign_keys=[user_id])
+    sender = relationship("User", foreign_keys=[sender_id])
+
+

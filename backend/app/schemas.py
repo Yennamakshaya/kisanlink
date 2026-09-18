@@ -39,6 +39,8 @@ class BuyerRegisterSchema(BaseModel):
     udyam_number: Optional[str] = None
     buyer_category: str
     procurement_categories: Optional[str] = None
+    certificate_name: Optional[str] = None
+    gst_doc_url: Optional[str] = None
 
 class LoginSchema(BaseModel):
     identifier: str # Email / Mobile / Username
@@ -86,6 +88,14 @@ class AddProduceSchema(BaseModel):
     pincode: str
     description: Optional[str] = None
     images: Optional[str] = None
+    lot_code: Optional[str] = None
+    is_fpo: bool = False
+    fpo_name: Optional[str] = None
+    aggregated_farmers_count: int = 1
+    quality_parameters: Optional[str] = None
+    storage_available: bool = False
+    storage_cost_per_day: float = 1.5
+    spoilage_risk_percent: float = 3.0
 
 # Requirement Schemas
 class AddRequirementSchema(BaseModel):
@@ -93,31 +103,67 @@ class AddRequirementSchema(BaseModel):
     variety: Optional[str] = None
     required_quantity: float
     quality: str = "Grade A"
+    min_quality_grade: str = "Grade A"
     max_price: float
+    target_price_min: Optional[float] = None
+    target_price_max: Optional[float] = None
     preferred_district: str
     preferred_mandal: Optional[str] = None
+    procurement_location: Optional[str] = None
     required_by_date: str
     pickup_delivery: str = "Pickup"
+    payment_terms: str = "100% on Quality Confirmation"
     additional_reqs: Optional[str] = None
+
+# Farmer Request Schemas
+class CreateFarmerRequestSchema(BaseModel):
+    buyer_id: int
+    produce_id: Optional[int] = None
+    requirement_id: Optional[int] = None
+    crop_name: str
+    quantity: float
+    quality: str = "Grade A"
+    farmer_expected_price: float
+    message: Optional[str] = None
+
+class SendOfferOnRequestSchema(BaseModel):
+    offered_price: float
+    quantity: Optional[float] = None
+    message: Optional[str] = None
+    pickup_date: Optional[str] = None
+    delivery_location: Optional[str] = None
+    payment_terms: Optional[str] = "Within 3 Days"
+    cold_storage_required: Optional[bool] = False
+    storage_cost: Optional[float] = 0.0
+    storage_duration: Optional[str] = None
 
 # Offer & Negotiation Schemas
 class SendOfferSchema(BaseModel):
+    request_id: Optional[int] = None
     produce_id: Optional[int] = None
     requirement_id: Optional[int] = None
     farmer_id: Optional[int] = None
     buyer_id: Optional[int] = None
     crop_name: str
     quantity: float
+    quality: str = "Grade A"
     price_per_kg: float
     pickup_date: Optional[str] = None
     delivery_location: Optional[str] = None
-    payment_terms: str = "100% on Quality Confirmation"
+    payment_terms: str = "Within 3 Days"
+    cold_storage_required: Optional[bool] = False
+    storage_cost: Optional[float] = 0.0
+    storage_duration: Optional[str] = None
     message: Optional[str] = None
 
 class CounterOfferSchema(BaseModel):
     offer_id: Optional[int] = None
     price_per_kg: float
     quantity: Optional[float] = None
+    payment_terms: Optional[str] = None
+    cold_storage_required: Optional[bool] = False
+    storage_cost: Optional[float] = 0.0
+    storage_duration: Optional[str] = None
     message: Optional[str] = None
 
 # Agreement Sign Schema
@@ -136,17 +182,29 @@ class BookSlotSchema(BaseModel):
 
 # Quality Confirmation Schema
 class QualityConfirmSchema(BaseModel):
-    procurement_id: int
+    procurement_id: Optional[int] = None
+    transaction_id: Optional[int] = None
+    agreement_id: Optional[int] = None
     received_quantity: float
-    quality_received: str
-    status: str # 'Accepted', 'Accepted with Adjustment', 'Rejected'
+    quality_received: str = "Grade A"
+    status: str = "Accepted" # 'Accepted', 'Accepted with Adjustment', 'Rejected', 'CONFIRMED'
     adjustment_reason: Optional[str] = None
 
 # Payment Schema
 class ProcessPaymentSchema(BaseModel):
     procurement_id: Optional[int] = None
     transaction_id: Optional[int] = None
-    payment_method: str = "Direct Bank Transfer (Prototype Sandbox)"
+    payment_method: str = "UPI"
+    upi_id: Optional[str] = None
+    payment_reference: Optional[str] = None
+    labour_charges: Optional[float] = None
+    delay_amount: Optional[float] = None
+
+# Labour Charges Negotiation Schema
+class NegotiateLabourSchema(BaseModel):
+    labour_charges: float
+    labour_notes: Optional[str] = None
+    action: Optional[str] = "agree" # 'propose', 'agree'
 
 # Rating Feedback Schema
 class AddFeedbackSchema(BaseModel):
@@ -164,6 +222,8 @@ class AddGrievanceSchema(BaseModel):
     category: str
     title: str
     description: str
+    transaction_id: Optional[int] = None
+    transaction_code: Optional[str] = None
 
 # Assistant Schema
 class AssistantQuerySchema(BaseModel):

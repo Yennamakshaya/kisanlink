@@ -34,7 +34,7 @@ export const FarmerDashboard: React.FC = () => {
             {t('welcomeFarmer')} {summary?.farmer_name || "Ramesh Reddy"} 👋
           </h1>
           <p className="text-xs text-emerald-200 mt-1">
-            {t('location')}: {summary?.village || "Shadnagar"}, {summary?.district || "Rangareddy"}, Telangana | {t('reliability')}: {summary?.reliability_score || 96.5}% ⭐ {summary?.rating || 4.9}
+            {t('location')}: {summary?.village || "Shadnagar"}, {summary?.district || "Rangareddy"} | {t('reliability')}: {summary?.reliability_score || 96.5}% ⭐ {summary?.rating || 4.9}
           </p>
         </div>
 
