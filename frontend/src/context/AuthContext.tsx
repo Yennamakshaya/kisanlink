@@ -1,6 +1,11 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
 
+const apiBaseUrl = (import.meta as any).env?.VITE_API_BASE_URL;
+if (apiBaseUrl) {
+  axios.defaults.baseURL = apiBaseUrl;
+}
+
 // Ensure Authorization header is always attached from storage on every request
 axios.interceptors.request.use((config) => {
   const saved = localStorage.getItem('kisanlink_session');
